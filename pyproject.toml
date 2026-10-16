@@ -1,0 +1,29 @@
+[project]
+name = "youtrack-board"
+version = "0.1.0"
+description = "A small terminal Agile board for YouTrack"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = ["textual>=1.0,<9", "httpx>=0.28,<1", "keyring>=25,<26"]
+
+[project.scripts]
+youtrack-board = "youtrack_board.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.25"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.hatch.build.targets.sdist]
+include = ["youtrack_board", "pyproject.toml", "README.md", "LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/krabilousse/youtrack-board"
+Repository = "https://github.com/krabilousse/youtrack-board"
