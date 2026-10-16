@@ -640,7 +640,7 @@ def test_command_line_guides_setup_and_refuses_bad_urls(monkeypatch, capsys):
     main()
     assert 'glab 1.115.0: signed in to git.example.org' in capsys.readouterr().out
     monkeypatch.setattr(sys, 'argv', ['gitlab_board'])
-    with pytest.raises(SystemExit, match='give a board URL'):
+    with pytest.raises(SystemExit, match='Give a board URL'):
         main()  # nothing saved yet to resume
 
 

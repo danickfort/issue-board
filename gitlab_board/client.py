@@ -13,6 +13,7 @@ from .target import ENUMS
 
 NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 FIRST = 100  # issues per list on the board; GitLab's maximum page size
+MR_BATCH = 50  # reviewer and assignee connections must stay below GitLab's query complexity limit
 PEOPLE_PAGES = 5  # up to 500 project members in the assign picker
 OPEN_PAGES = 5  # up to 500 open merge requests searched for a story ID
 NOTE_PAGES = 20  # up to 2,000 comments
@@ -24,6 +25,10 @@ LIST = 'id title listType position collapsed issuesCount label { title }'
 LIST_EE = LIST + ' maxIssueCount limitMetric assignee { username name } milestone { title } iteration { title }'
 # A merge request's status, as the panel shows it (see docs/plans/linked-merge-requests.md). Approvals are Premium.
 MR = ('iid title webUrl state draft sourceBranch targetBranch conflicts detailedMergeStatus updatedAt '
+      'userNotesCount resolvableDiscussionsCount resolvedDiscussionsCount '
+      'autoMergeEnabled author { username name } '
+      'reviewers(first: 20) { pageInfo { hasNextPage } nodes { username name mergeRequestInteraction { reviewState } } } '
+      'assignees(first: 20) { pageInfo { hasNextPage } nodes { username name } } '
       'project { fullPath } sourceProject { fullPath } headPipeline { status detailedStatus { label } }')
 MR_EE = MR + ' approvalsLeft approvalsRequired'
 BOARD = 'id name webUrl hideBacklogList hideClosedList'
@@ -228,6 +233,13 @@ class Client:
                 'boards': [{'id': b['id'], 'name': b['name'], 'number': int(number(b['id']))}
                            for b in (found.get('boards') or {}).get('nodes') or []]}
 
+    async def recent_boards(self, place):
+        """Numbers of the boards you visited last on GitLab's web pages, newest first (GitLab keeps 4 per person). GitLab
+        has no board activity time: Board.updatedAt changes only with the board's own settings."""
+        data = await self.glab.graphql(f'query {{ ns: {self.namespace(place)} {{ recentIssueBoards(first: 4) '
+                                       '{ nodes { id } } } }')
+        return [int(number(b['id'])) for b in ((data.get('ns') or {}).get('recentIssueBoards') or {}).get('nodes') or []]
+
     async def board(self, place, board_number):
         """The board's settings, including its scope (Premium), which GitLab's page adds to the filters itself."""
         board_id = literal(f'gid://gitlab/Board/{int(board_number)}')
@@ -369,8 +381,8 @@ class Client:
         if not found:
             return {'mrs': [], 'more': more}
         nodes, ids = [], list(found)
-        for offset in range(0, len(ids), FIRST):
-            batch = ids[offset:offset + FIRST]
+        for offset in range(0, len(ids), MR_BATCH):
+            batch = ids[offset:offset + MR_BATCH]
             data = await self.ask(lambda ee: (
                 f'query {{ project(fullPath: {literal(path)}) {{ mergeRequests(iids: {literal(batch)}, '
                 f'first: {len(batch)}) {{ nodes {{ {MR_EE if ee else MR} }} }} }} }}'))

@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from rich.text import Text
 from textual import on, work
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
@@ -25,6 +25,8 @@ MERGE = {'MERGEABLE': 'ready to merge', 'UNCHECKED': 'mergeability not checked y
          'CI_MUST_PASS': 'pipeline must succeed', 'CI_STILL_RUNNING': 'waits for the pipeline',
          'DISCUSSIONS_NOT_RESOLVED': 'unresolved threads', 'DRAFT_STATUS': 'draft', 'NOT_APPROVED': 'needs approval',
          'REQUESTED_CHANGES': 'changes requested', 'BLOCKED_STATUS': 'blocked by another MR', 'NOT_OPEN': 'not open'}
+REVIEW = {'UNREVIEWED': 'awaiting review', 'REVIEW_STARTED': 'reviewing', 'REVIEWED': 'commented',
+          'REQUESTED_CHANGES': 'changes requested', 'APPROVED': 'approved', 'UNAPPROVED': 'removed approval'}
 
 
 def repository(text):
@@ -49,9 +51,51 @@ def pipeline(mr):
     return 'pipeline ' + ((head.get('detailedStatus') or {}).get('label') or str(head.get('status') or 'unknown').lower())
 
 
+def discussion_status(mr):
+    total, resolved = mr.get('resolvableDiscussionsCount'), mr.get('resolvedDiscussionsCount')
+    if total is None or resolved is None:
+        return 'unknown'
+    if total == 0:
+        return 'no resolvable threads'
+    return f'{total - resolved} unresolved · {resolved} resolved'
+
+
+def person(user):
+    if not user:
+        return 'unknown'
+    name, username = plain(user.get('name') or ''), plain(user.get('username') or '')
+    if name and username and name != username:
+        return f'{name} (@{username})'
+    return name or (f'@{username}' if username else 'unknown')
+
+
+def participants(mr, role):
+    connection = mr.get(role)
+    if connection is None:
+        return 'unknown'
+    names = []
+    for user in connection.get('nodes') or []:
+        state = (user.get('mergeRequestInteraction') or {}).get('reviewState') if role == 'reviewers' else None
+        label = person(user)
+        if state:
+            label += ' — ' + REVIEW.get(state, plain(state).lower().replace('_', ' '))
+        names.append(label)
+    if (connection.get('pageInfo') or {}).get('hasNextPage'):
+        names.append('more in GitLab')
+    return '; '.join(names) or 'none'
+
+
 def summary(mr):
     """What stands between the MR and a merge, in a few words."""
-    words = ['being merged' if mr['state'] == 'locked' else None, 'draft' if mr.get('draft') else None, pipeline(mr),
+    count = mr.get('userNotesCount')
+    activity = [f'{count} comment{"s" if count != 1 else ""}' if count is not None else None]
+    if mr.get('resolvableDiscussionsCount') is not None and mr.get('resolvedDiscussionsCount') is not None:
+        activity.append('threads: ' + discussion_status(mr))
+    changes = any((user.get('mergeRequestInteraction') or {}).get('reviewState') == 'REQUESTED_CHANGES'
+                  for user in (mr.get('reviewers') or {}).get('nodes') or [])
+    words = ['being merged' if mr['state'] == 'locked' else None, 'draft' if mr.get('draft') else None,
+             'auto-merge on' if mr.get('autoMergeEnabled') is True else None,
+             'changes requested' if changes else None, *activity, pipeline(mr),
              merge_status(mr), 'conflicts' if mr.get('conflicts') else None]
     return ' · '.join(dict.fromkeys(plain(w) for w in words if w))
 
@@ -60,6 +104,8 @@ def approvals(mr):
     required, left = mr.get('approvalsRequired'), mr.get('approvalsLeft')  # Premium only; absent elsewhere
     if not required:
         return None
+    if left is None:
+        return f'unknown ({required} required)'
     return 'approved' if not left else f'{left} of {required} still needed'
 
 
@@ -83,8 +129,14 @@ def details(mr, home=None):
     status = [('Pipeline', pipeline(mr).removeprefix('pipeline ')), ('Merge', merge_status(mr)),
               ('Approvals', approvals(mr)), ('Conflicts', 'yes' if mr.get('conflicts') else None)]
     updated = (mr.get('updatedAt') or '')[:16].replace('T', ' ')
+    count = mr.get('userNotesCount')
+    activity = f'Comments: {count if count is not None else "unknown"} · Threads: {discussion_status(mr)}'
+    auto = 'on' if mr.get('autoMergeEnabled') is True else 'off' if mr.get('autoMergeEnabled') is False else 'unknown'
     return Text.assemble(
-        (reference(mr, home), 'bold'), f'  {"draft · " if mr.get("draft") else ""}{"being merged" if mr["state"] == "locked" else "open"}\n',
+        (reference(mr, home), 'bold'), f'  {"draft · " if mr.get("draft") else ""}{"being merged" if mr["state"] == "locked" else "open"} · auto-merge {auto}\n',
+        plain(activity), '\n',
+        plain(f'Author: {person(mr.get("author"))}\nReviewers: {participants(mr, "reviewers")}\n'
+              f'Assignees: {participants(mr, "assignees")}\n'),
         plain(f'{mr.get("sourceBranch")} → {mr.get("targetBranch")}{fork}\n'),
         plain('  ·  '.join(f'{name}: {value}' for name, value in status if value)), '\n',
         (plain(f'{mr.get("why") or "Linked"}' + (f' · updated {updated} UTC' if updated else '')), 'dim'))
@@ -94,15 +146,18 @@ class MergeRequestsScreen(ModalScreen):
     """A card's open MRs, read when it opens and on r. Closing it cancels a request still running, so no late answer
     lands, and the board behind it stays as it was. Nothing here changes an MR."""
     BINDINGS = [Binding('escape,g', 'dismiss', 'Close'), Binding('r', 'load', 'Reload'), Binding('o', 'open', 'Browser'),
-                Binding('u', 'dismiss("repo")', 'Change repository')]
+                Binding('u', 'dismiss("repo")', 'Change repository'),
+                Binding('pagedown', 'details_down', 'Scroll details', show=False, priority=True),
+                Binding('pageup', 'details_up', 'Scroll details', show=False, priority=True)]
     # Own ids: the boards' #dialog and .hint rules would outrank DEFAULT_CSS.
     DEFAULT_CSS = '''
     #mr-dialog { width: 100; max-width: 96%; height: 90%; max-height: 96%; padding: 0 1; border: round $border;
                  background: $surface; }
     #mr-title { text-style: bold; }
     #mr-about { color: $text-muted; }
-    #merge-requests { height: 1fr; margin-top: 1; padding: 0; border: none; scrollbar-size-vertical: 1; }
-    #mr-details { height: auto; max-height: 6; border-top: solid $foreground 25%; }
+    #merge-requests { height: 1fr; min-height: 3; margin-top: 1; padding: 0; border: none; scrollbar-size-vertical: 1; }
+    #mr-detail-scroll { height: auto; max-height: 6; border-top: solid $foreground 25%; scrollbar-size-vertical: 1; }
+    #mr-details { height: auto; }
     #mr-hint { color: $text-muted; }
     #mr-hint.error { color: $text-error; }
     '''
@@ -122,7 +177,9 @@ class MergeRequestsScreen(ModalScreen):
             yield Label(Text(self.prompt), id='mr-title')
             yield Static(Text(self.about), id='mr-about')
             yield OptionList(id='merge-requests')
-            yield Static('', id='mr-details')
+            with VerticalScroll(id='mr-detail-scroll') as pane:
+                pane.border_title = 'Details · PgUp/PgDn scroll'
+                yield Static('', id='mr-details')
             yield Static('', id='mr-hint')
 
     def on_mount(self):
@@ -137,6 +194,7 @@ class MergeRequestsScreen(ModalScreen):
         options = self.query_one(OptionList)
         options.set_options([Option(Text(message, 'dim'), disabled=True)])
         self.query_one('#mr-details', Static).display = False
+        self.query_one('#mr-detail-scroll').display = False
         self.hint(hint, error)
 
     def hint(self, text, error=False):
@@ -168,6 +226,7 @@ class MergeRequestsScreen(ModalScreen):
                                                   ('  ' + summary(mr), 'dim'))) for mr in self.mrs])
         options.highlighted = next((n for n, mr in enumerate(self.mrs) if mr.get('webUrl') == keep), 0)
         self.query_one('#mr-details', Static).display = True
+        self.query_one('#mr-detail-scroll').display = True
         self.hint(' · '.join(notes) + '  ·  Enter/o browser')
         self.show_details()
 
@@ -179,6 +238,13 @@ class MergeRequestsScreen(ModalScreen):
     def show_details(self):
         if self.current():
             self.query_one('#mr-details', Static).update(details(self.current(), self.home))
+            self.query_one('#mr-detail-scroll').scroll_home(animate=False)
+
+    def action_details_down(self):
+        self.query_one('#mr-detail-scroll').scroll_page_down(animate=False)
+
+    def action_details_up(self):
+        self.query_one('#mr-detail-scroll').scroll_page_up(animate=False)
 
     @on(OptionList.OptionSelected)
     def action_open(self):

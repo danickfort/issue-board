@@ -31,6 +31,10 @@ class GlabError(Exception):
     status = None  # the HTTP status, when GitLab answered with one
 
 
+class UnknownHost(GlabError):
+    """glab has no sign-in for this host, so it may not be a GitLab at all."""
+
+
 def env():
     return {**{k: v for k, v in os.environ.items() if k not in DROP}, **ENV}
 
@@ -144,5 +148,9 @@ def check(host, binary='glab'):
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise GlabError(f'Could not run glab: {type(exc).__name__}') from None
     if status.returncode:
-        raise GlabError(LOGIN.format(host=host))
+        said = status.stdout + status.stderr
+        if 'has not been authenticated' in said:  # glab answers this from its own config, without a request
+            raise UnknownHost(LOGIN.format(host=host))
+        offline = re.search(r'[^\n]*(dial tcp|no such host|connection refused|timeout|i/o timeout)[^\n]*', said, re.I)
+        raise GlabError(f'Could not reach {host}: {redact(offline.group().strip())[:200]}' if offline else LOGIN.format(host=host))
     return version[0] if version else 'glab'

@@ -4,6 +4,7 @@ GitLab decides which issues each list holds and what a move changes; this app sh
 board mutations as GitLab's page, and explains their effects first. Requests go through glab (see glab.py).
 """
 import argparse
+import os
 import sys
 import webbrowser
 from urllib.parse import urlsplit
@@ -20,7 +21,7 @@ from youtrack_board import prefs as base_prefs
 from youtrack_board.app import (ALL, HINT, BacklogScreen, BoardApp, Card, Column, CommentDialog, CommentsScreen, Picker,
                                 Row, ViewDialog, ago, plain)
 
-from . import glab, target
+from . import glab, remotes, target
 from .client import FIRST, Client, describe_move, move_effects, project_path
 from .demo import HOST as DEMO_HOST
 from .demo import DemoClient, demo_state
@@ -37,8 +38,15 @@ def clean_view(view):
 
 class Prefs(base_prefs.Prefs):
     """The YouTrack app's local state file format, in gitlab-board/state.json, per GitLab host. Boards are keyed by
-    their web path (group/project/-/boards/1), and 'project' holds the project or group last used."""
+    their web path (group/project/-/boards/1), 'project' holds the project or group last used, and 'defaults' the
+    board you chose to open for each project or group (group/project or groups/group -> board key)."""
     VIEW = staticmethod(clean_view)
+
+    def clean(self, section):
+        defaults = section.get('defaults') if isinstance(section, dict) else None
+        return {**super().clean(section), 'defaults': {
+            k: v for k, v in (defaults if isinstance(defaults, dict) else {}).items()
+            if isinstance(v, str) and v.startswith(k + '/-/boards/') and v.rsplit('/', 1)[-1].isdigit()}}
 
 
 def people(issue):
@@ -222,12 +230,20 @@ class GitLabApp(BoardApp):
     #scope.warning { color: $text-warning; }
     '''
     BINDINGS = [('p', 'pick_project', 'Place'), ('B', 'backlog', 'List'),
-                Binding('e', 'lanes', 'Epic swimlanes', show=False)]
+                Binding('e', 'lanes', 'Epic swimlanes', show=False), Binding('D', 'make_default', 'Default board', show=False)]
 
-    def __init__(self, client, prefs=None, via=None, start=None):
+    def __init__(self, client, prefs=None, via=None, start=None, remotes=(), note=None):
+        """remotes: the GitLab projects of the Git checkout the app started in (several: it asks which). note: why the
+        checkout gave none, shown once."""
         super().__init__(client, prefs or Prefs(None, client.host))
         self.start = start  # the Target to open: a board (with its URL filters), a project or a group
         self.via, self.place = via, None  # via: the glab version, named with the account once GitLab answers
+        self.remotes, self.note = remotes, note
+
+    def on_mount(self):
+        super().on_mount()
+        if self.note:
+            self.notify(self.note, title='No GitLab project in this checkout', severity='warning', timeout=10)
 
     def compose(self):
         with Horizontal(id='toolbar'):
@@ -390,11 +406,17 @@ class GitLabApp(BoardApp):
         visited = self.prefs.data['visited']
         return sorted(keys, key=lambda k: -visited.get(k, 0))
 
+    def from_checkout(self, place):
+        return place['kind'] == 'project' and place['path'].casefold() in {r.path.casefold() for r in self.remotes}
+
     @work(exclusive=True, group='load')
     async def load_boards(self):
         start = self.start
         if not start:
-            self.status('No board to open. Press p and enter a GitLab board, project or group URL.', error=True)
+            if self.remotes:
+                self.choose_project()
+            else:
+                self.status('No board to open. Press p and enter a GitLab board, project or group URL.', error=True)
             return
         self.status(f'Loading the boards of {start.path}…')
         try:
@@ -413,11 +435,84 @@ class GitLabApp(BoardApp):
             self.status(f'{place["path"]} has no issue boards. Create one in GitLab, or press p for another place.', error=True)
             return
         numbers = [b['number'] for b in self.boards]
-        if start.board and start.board not in numbers:
-            self.notify(f'Board {start.board} is not in {place["path"]}; opened its most recent board instead.',
-                        severity='warning')
-        keys = self.recent([self.board_key(n) for n in numbers])
-        self.load_board(self.board_key(start.board) if start.board in numbers else keys[0])
+        keys = [self.board_key(n) for n in numbers]
+        default = self.prefs.data['defaults'].get(place_key(place['kind'], place['path']))
+        if start.board in numbers:
+            self.load_board(self.board_key(start.board))
+            return
+        if start.board:
+            self.notify(f'Board {start.board} is not in {place["path"]}.', severity='warning')
+        if default in keys:
+            self.load_board(default)
+        elif default or self.from_checkout(place):
+            await self.choose_default(keys, gone=bool(default))
+        else:
+            self.load_board(self.recent(keys)[0])
+
+    async def choose_default(self, keys, gone):
+        """Ask which board opens for this place from now on: nothing opens or is saved until one is picked. A single
+        board needs no question. GitLab keeps no board activity time, so none is guessed; your last visit on GitLab is
+        only preselected."""
+        path = self.place['path']
+        why = f'Your default board of {path} is gone, or hidden from you now. ' if gone else ''
+        if len(keys) == 1:
+            self.set_default(keys[0], f'{why}{self.boards[0]["name"]}, the only board of {path}, is your default now.')
+            self.load_board(keys[0])
+            return
+        try:
+            recent = [self.board_key(n) for n in await self.client.recent_boards(self.place)]
+        except GlabError:
+            recent = []  # it only preselects
+        visited, choices = self.prefs.data['visited'], []
+        for board, key in zip(self.boards, keys):
+            notes = (['your last visit on GitLab'] if recent[:1] == [key] else []) + \
+                ([f'opened here {ago(visited[key])}'] if key in visited else [])
+            choices.append((key, Text.assemble(plain(board['name']), (''.join(f'  · {n}' for n in notes), 'dim')),
+                            board['name'].casefold(), False))
+        pick = next((k for k in recent if k in keys), None) or next((k for k in self.recent(keys) if k in visited), None)
+        self.status(f'{why}Choose the board to open for {path} from now on; Esc opens none and saves nothing.')
+        self.push_screen(Picker(f'{path}: choose a new default board' if gone else
+                                f'Found project {path} — choose your default board', choices, pick), self.default_picked)
+
+    def default_picked(self, key):
+        if key:
+            name = next(b['name'] for b in self.boards if self.board_key(b['number']) == key)
+            self.set_default(key, f'{name} is now the default board of {self.place["path"]}. D on another board changes it.')
+            self.load_board(key)
+        else:
+            self.status(f'No default board for {self.place["path"]}; nothing was saved. Press b to open a board (D makes '
+                        'it the default), or p for another place.', error=True)
+
+    def set_default(self, key, message):
+        self.prefs.data['defaults'][place_key(self.place['kind'], self.place['path'])] = key
+        self.save_prefs()
+        self.notify(message)
+
+    def action_make_default(self):
+        if self.board_data:
+            path, name = self.place['path'], self.board_data['name']
+            if self.prefs.data['defaults'].get(place_key(self.place['kind'], path)) == self.board_id:
+                self.notify(f'{name} already is the default board of {path}.')
+            else:
+                self.set_default(self.board_id, f'{name} is now the default board of {path}.')
+
+    def choose_project(self):
+        """The checkout's remotes name several GitLab projects (a fork and its upstream, say): ask, never guess."""
+        visited = self.prefs.data['visited']
+
+        def used(remote):
+            return max((v for k, v in visited.items() if k.startswith(remote.path + '/-/boards/')), default=0)
+        choices = [(r.path, Text.assemble(r.path, (f'  {r.names}', 'dim')), f'{r.path} {r.names}'.casefold(), False)
+                   for r in self.remotes]
+        self.status('This checkout’s remotes name several GitLab projects.')
+        self.push_screen(Picker(f'Found {len(self.remotes)} GitLab projects in this checkout’s remotes — choose one',
+                                choices, max(self.remotes, key=used).path), self.project_chosen)
+
+    def project_chosen(self, path):
+        if path:
+            self.go(path)
+        else:
+            self.status('No project chosen. Press p for a project or group.', error=True)
 
     @work(exclusive=True, group='load')
     async def load_board(self, key):
@@ -453,9 +548,11 @@ class GitLabApp(BoardApp):
         if self.busy or not self.boards:
             return
         visited, choices = self.prefs.data['visited'], []
+        default = self.prefs.data['defaults'].get(place_key(self.place['kind'], self.place['path']))
         for board in sorted(self.boards, key=lambda b: (-visited.get(self.board_key(b['number']), 0), b['name'].casefold())):
             key = self.board_key(board['number'])
             note = '  (current)' if key == self.board_id else f'  · opened {ago(visited[key])}' if key in visited else ''
+            note += '  · default' if key == default else ''
             choices.append((key, Text.assemble(plain(board['name']), (note, 'dim')), board['name'].casefold(),
                             key == self.board_id))
         choices.append((ALL, Text('Other projects and groups…  (p)', 'italic'), None, False))
@@ -654,41 +751,55 @@ class GitLabApp(BoardApp):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog='python -m gitlab_board', description='A keyboard-driven GitLab issue board in the terminal',
+        prog='gitlab-board', description='A keyboard-driven GitLab issue board in the terminal',
         epilog='Requests run through the GitLab CLI (glab) with its own sign-in: glab auth login --hostname <host>. '
-               'Without a URL, the board you opened last on --hostname opens again.')
+               'Without a URL, inside a Git checkout whose remote is a GitLab project, that project opens on your '
+               'default board, chosen the first time. Elsewhere, the board you opened last on --hostname opens again.')
     parser.add_argument('url', nargs='?', help='a board URL (filters included), or a project or group URL or path')
-    parser.add_argument('--hostname', default='gitlab.com', help='GitLab host for a bare path or resuming (default: gitlab.com)')
+    parser.add_argument('--hostname', help='GitLab host for a bare path or resuming (default: gitlab.com); in a '
+                                           'checkout, only its remotes on this host count')
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--demo', action='store_true', help='try with in-memory sample data; runs no glab, saves nothing')
     modes.add_argument('--auth-status', action='store_true', help='check glab and its sign-in for the host, then exit')
     args = parser.parse_args()
     try:
-        start = target.parse(args.url, DEMO_HOST if args.demo else args.hostname) if args.url else None
+        start = target.parse(args.url, DEMO_HOST if args.demo else args.hostname or 'gitlab.com') if args.url else None
         if start:
             target.filters(start.params)  # refuse filters the board would not apply before anything starts
     except target.TargetError as exc:
-        sys.exit(f'gitlab_board: {exc}')
+        sys.exit(f'gitlab-board: {exc}')
     if args.demo:
         client = DemoClient()
         state = demo_state()
         GitLabApp(client, Prefs(None, client.host, state), start=start or target.parse(state['project'], client.host)).run()
         return
-    host = start.host if start else args.hostname
+    host, found, versions, note = start.host if start else args.hostname or 'gitlab.com', [], {}, None
     try:
-        version = glab.check(host)
+        if not start:  # a URL wins over the checkout
+            try:
+                found, versions = remotes.find(os.curdir, args.hostname)
+            except remotes.NoRemote as exc:
+                note = str(exc) if exc.checkout else None
+        if len(versions) > 1:
+            sys.exit('gitlab-board: this checkout has GitLab remotes on several hosts: ' + '; '.join(map(str, found))
+                     + '. Choose one with --hostname, or give a board or project URL.')
+        host = next(iter(versions), host)
+        version = versions.get(host) or glab.check(host)
     except GlabError as exc:
-        sys.exit(f'gitlab_board: {exc}')
+        sys.exit(f'gitlab-board: {exc}')
     if args.auth_status:
-        print(f'{version}: signed in to {host} (glab auth status --hostname {host} shows the details).')
+        print(f'{version}: signed in to {host} (glab auth status --hostname {host} shows the details).'
+              + ''.join(f'\nThis checkout: {r}' for r in found))
         return
     prefs = Prefs(base_prefs.default_path('gitlab-board'), host)
-    if not start and prefs.data['project']:
+    if len(found) == 1:
+        start = target.Target(host, found[0].path, 'project')
+    elif not found and not start and prefs.data['project']:
         start = target.parse(prefs.data['project'], host)
-    if not start:
-        sys.exit(f'gitlab_board: give a board URL, for example https://{host}/group/project/-/boards/1 '
-                 '(or try --demo).')
-    GitLabApp(Client(host), prefs, version, start).run()
+    if not start and not found:
+        sys.exit(f'gitlab-board: {note + " " if note else ""}Give a board URL, for example '
+                 f'https://{host}/group/project/-/boards/1 (or try --demo).')
+    GitLabApp(Client(host), prefs, version, start, found, note).run()
 
 
 if __name__ == '__main__':

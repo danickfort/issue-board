@@ -61,7 +61,10 @@ class Prefs:
     def __init__(self, path, server, section=None):
         """Without a path, state starts from `section` and stays in memory (the demo and tests use this)."""
         self.path, self.server, self.warning = path, server, None
-        self.data = clean(self.read().get(server) if path else section, self.VIEW)
+        self.data = self.clean(self.read().get(server) if path else section)
+
+    def clean(self, section):
+        return clean(section, self.VIEW)
 
     def read(self):
         try:

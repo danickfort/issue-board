@@ -236,10 +236,11 @@ async def test_project_scan_pages_by_cursor_then_reads_the_status_of_matches_onl
 async def test_project_scan_keeps_all_matches_across_status_query_pages():
     light = [{'iid': str(i), 'title': 'DEMO-1', 'sourceBranch': 'fix', 'description': ''} for i in range(101)]
     fake = FakeGlab(page(*light[:100], more='next'), page(light[100]),
-                    page(*(mr(i) for i in range(100))), page(mr(100)))
+                    page(*(mr(i) for i in range(50))), page(*(mr(i) for i in range(50, 100))), page(mr(100)))
     found = await Client(HOST, fake).project_merge_requests('g/app', 'DEMO-1')
     assert len(found['mrs']) == 101 and not found['more']
     assert {item['iid'] for item in found['mrs']} == {str(i) for i in range(101)}
+    assert all('first: 50' in query for query in fake.documents[2:4])
 
 
 async def test_project_scan_runs_glab_with_the_story_on_stdin_only(fake_glab, monkeypatch):
@@ -394,14 +395,9 @@ def test_the_youtrack_board_starts_without_gitlab_code():
     assert out.strip() == '[]'
 
 
-def test_the_package_ships_every_gitlab_module_the_youtrack_board_imports():
-    """Built artifacts (wheel and sdist) must hold what g imports; the GitLab board app itself stays out."""
-    out = subprocess.run([sys.executable, '-c', 'import sys, youtrack_board.app, youtrack_board.demo as d; '
-                          'd.demo_gitlab("gitlab.example.com"); import gitlab_board.merge_requests; '
-                          'print(" ".join(sorted(m for m in sys.modules if m.startswith("gitlab_board."))))'],
-                         capture_output=True, text=True, check=True).stdout.split()
-    needed = {f'gitlab_board/{m.split(".")[1]}.py' for m in out} | {'gitlab_board/__init__.py'}
-    build = tomllib.loads((Path(__file__).parent.parent / 'pyproject.toml').read_text())['tool']['hatch']['build']['targets']
-    for kind in ('wheel', 'sdist'):
-        shipped = {p for p in build[kind]['include'] if p.startswith('gitlab_board')}
-        assert shipped == needed and 'gitlab_board/app.py' not in shipped, kind
+def test_the_package_ships_both_boards():
+    """Built artifacts (wheel and sdist) hold the whole GitLab package: g imports part of it, gitlab-board the rest."""
+    project = tomllib.loads((Path(__file__).parent.parent / 'pyproject.toml').read_text())
+    assert project['project']['scripts'] == {'youtrack-board': 'youtrack_board.app:main', 'gitlab-board': 'gitlab_board.app:main'}
+    for kind, build in project['tool']['hatch']['build']['targets'].items():
+        assert {'youtrack_board', 'gitlab_board'} <= set(build['include']), kind

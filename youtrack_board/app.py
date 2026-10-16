@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 import shutil
 import sys
 import time
@@ -602,10 +603,11 @@ class BoardApp(App):
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
-    def __init__(self, client, prefs=None, connection=None, gitlab=None):
+    def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None):
         super().__init__()
         self.client = client
         self.gitlab, self.gitlabs = gitlab, {}  # host -> GitLab client for merge requests; None: glab's, made on first use
+        self.cwd = cwd  # the folder the board started in, whose Git remotes may name a project's repository; None: never looked at
         self.connection = connection  # which account and which token, shown once at start
         self.prefs = prefs or Prefs(None, client.base_url)
         self.boards = []
@@ -1331,8 +1333,49 @@ class BoardApp(App):
             url = self.prefs.data['repos'].get((self.selected.get('project') or {}).get('id'))
             if url:
                 self.open_merge_requests(self.selected, url)
+            elif self.cwd and (self.gitlab or shutil.which('glab')):
+                self.find_repository(self.selected)
             else:
                 self.ask_repository(self.selected)
+
+    @work(exclusive=True, group='repository')
+    async def find_repository(self, issue):
+        """A project's first g inside a Git checkout: its GitLab remote, without asking when there is one. Like a typed
+        URL, it is saved only once GitLab shows it to you. A repository already linked to another project, or several
+        remotes, are asked about instead: one checkout says nothing about which YouTrack project it belongs to."""
+        from gitlab_board import remotes
+        from gitlab_board.glab import GlabError
+        project = issue.get('project') or {}
+        self.status('Looking for the GitLab project of this checkout…')
+        try:
+            found, _ = await asyncio.to_thread(remotes.find, self.cwd)
+        except remotes.NoRemote:
+            self.show_counts()
+            self.ask_repository(issue)
+            return
+        except GlabError as exc:
+            self.status(f'{exc} Nothing was saved; press g to try again.', error=True)
+            return
+        self.show_counts()
+        urls = {f'https://{r.host}/{r.path}': r for r in found}
+        if len(urls) == 1:
+            url, remote = next(iter(urls.items()))
+            taken = [pid for pid, saved in self.prefs.data['repos'].items() if saved.casefold() == url.casefold()]
+            if taken:
+                others = ', '.join((self.projects().get(pid) or {}).get('shortName', pid) for pid in taken)
+                self.notify(f'This checkout’s repository is already linked to {others}. Confirm it for '
+                            f'{project.get("shortName")} too, or enter another.', markup=False)
+                self.ask_repository(issue, url)
+            else:
+                self.open_merge_requests(issue, url, check=True, remote=remote.names)
+            return
+        ask = '\x00ask'
+        choices = [(url, Text.assemble(f'{r.host}/{r.path}', (f'  {r.names}', 'dim')), f'{url} {r.names}'.casefold(), False)
+                   for url, r in urls.items()]
+        choices.append((ask, Text('Another repository URL…', 'italic'), None, False))
+        self.push_screen(Picker(f'GitLab repository of {project.get("shortName")} stories · this checkout has several',
+                                choices), lambda url: self.ask_repository(issue) if url == ask else url and
+                         self.open_merge_requests(issue, url, check=True, remote=urls[url].names))
 
     def ask_repository(self, issue, current=''):
         if self.gitlab is None and not shutil.which('glab'):
@@ -1354,8 +1397,9 @@ class BoardApp(App):
         self.push_screen(CommentDialog(f'GitLab repository of {project.get("shortName")} stories',
                                        'https://gitlab.example.com/group/project', current), chosen)
 
-    def open_merge_requests(self, issue, url, check=False):
-        """The panel for a repository: a new one (check) is saved for the project once GitLab shows it to you."""
+    def open_merge_requests(self, issue, url, check=False, remote=None):
+        """The panel for a repository: a new one (check) is saved for the project once GitLab shows it to you. remote:
+        the checkout's Git remote it was found in."""
         from gitlab_board.merge_requests import MergeRequestsScreen, repository
         from gitlab_board.target import TargetError
         try:
@@ -1371,7 +1415,8 @@ class BoardApp(App):
                 screen.home = (await gitlab.place(path, 'project'))['path']
                 self.prefs.data['repos'][project['id']] = f'https://{host}/{screen.home}'
                 self.save_prefs()
-                self.notify(f'{project.get("shortName")} merge requests now come from {host}/{screen.home}. '
+                found = f', the {remote} remote of this checkout' if remote else ''
+                self.notify(f'{project.get("shortName")} merge requests now come from {host}/{screen.home}{found}. '
                             'Press u in the panel to change it.', markup=False)
             return await gitlab.project_merge_requests(screen.home, key)
         screen = MergeRequestsScreen(f'Open merge requests · {key} {plain(issue["summary"])}',
@@ -1447,7 +1492,7 @@ def main():
         client = Client(account.url, account.token)
     except (credentials.SetupError, YouTrackError, OSError) as exc:
         sys.exit(f'youtrack-board: {exc}')
-    BoardApp(client, Prefs(default_path(), client.base_url), connection).run()
+    BoardApp(client, Prefs(default_path(), client.base_url), connection, cwd=os.curdir).run()
 
 
 if __name__ == '__main__':

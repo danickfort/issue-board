@@ -158,6 +158,14 @@ class DemoClient:
                 'detailedMergeStatus': status, 'updatedAt': stamp(n + 1), 'project': {'fullPath': path},
                 'sourceProject': {'fullPath': fork or path}, 'approvalsRequired': 2 if status == 'NOT_APPROVED' else 0,
                 'approvalsLeft': 1 if status == 'NOT_APPROVED' else 0,
+                'userNotesCount': (6, 3, 0)[n % 3], 'resolvableDiscussionsCount': (3, 2, 0)[n % 3],
+                'resolvedDiscussionsCount': (1, 2, 0)[n % 3],
+                'autoMergeEnabled': n % 3 == 0, 'author': deepcopy(PEOPLE['alex']),
+                'reviewers': {'nodes': [{**deepcopy(PEOPLE['jordan']), 'mergeRequestInteraction': {
+                    'reviewState': ('REVIEW_STARTED', 'APPROVED', 'REQUESTED_CHANGES')[n % 3]}}],
+                              'pageInfo': {'hasNextPage': False}},
+                'assignees': {'nodes': [deepcopy(PEOPLE['sam'])] if n % 3 != 2 else [],
+                              'pageInfo': {'hasNextPage': False}},
                 'headPipeline': pipeline and {'status': pipeline, 'detailedStatus': {
                     'label': {'SUCCESS': 'passed'}.get(pipeline, pipeline.lower())}}}, closes, mentions))
 
@@ -180,6 +188,9 @@ class DemoClient:
                   for n, (k, p, name, _, _) in BOARDS.items() if p == path]
         return {'kind': kinds[path], 'path': path, 'webUrl': f'{self.base_url}/{"groups/" if kinds[path] == "group" else ""}{path}',
                 'parent': 'demo' if path != 'demo' else None, 'boards': boards}
+
+    async def recent_boards(self, place):
+        return [2] if place['path'] == 'demo/portal' else []  # as if you had opened the sprint board on GitLab
 
     async def board(self, place, board_number):
         kind, path, name, scope, _ = BOARDS.get(board_number, (None, None, None, None, None))
