@@ -105,7 +105,7 @@ youtrack-board
 | m | Move: the current value is marked, the next one is preselected, Enter saves. Workflow-driven fields list YouTrack's transitions instead |
 | c | Write a single-line comment, then Enter to save |
 | C (Shift+c) | Read the selected card's comments, newest first. ↑/↓, PgUp/PgDn, Home/End scroll; `r` reloads; `c` writes one; Escape or `C` returns to the card |
-| g | The open GitLab [merge requests](#gitlab-merge-requests) that name the selected story. Source checkout only for now |
+| g | The open GitLab [merge requests](#gitlab-merge-requests) that name the selected story |
 | b | Switch board, most recently opened first. The previous board is preselected, so `b` Enter flips between two boards |
 | B (Shift+b) | Open this board's [backlog](#backlog) full screen; Escape or `B` returns to the board as you left it |
 | p | Choose a project, or **All projects** |
@@ -157,7 +157,7 @@ Each comment shows its author, local time, whether it was edited, and a formatte
 
 `g` lists the open GitLab merge requests (MRs) that name the selected story, with their status. It only reads: nothing is merged, approved, rebased or rerun.
 
-**Not in the installed 0.1.1.** The Homebrew app does not have `g` yet. Run the board from a source checkout (`uv run youtrack-board`, see [Development](#development)) to use it.
+Available in **YouTrack Board 0.1.2 and later**. Update your Homebrew installation using the commands above, then restart the app. MR lookup requires the GitLab CLI: `brew install glab`, then `glab auth login --hostname <your-gitlab-host>`.
 
 **Requirements.** The [GitLab CLI](https://gitlab.com/gitlab-org/cli) (`glab`), signed in to your GitLab host. The board uses glab's own sign-in and never asks for, reads or stores a GitLab token. It starts without glab; only `g` needs it.
 
