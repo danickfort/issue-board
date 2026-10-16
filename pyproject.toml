@@ -21,8 +21,16 @@ dev = ["pytest>=8", "pytest-asyncio>=0.25"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
+# The YouTrack board's merge requests panel (g) imports these GitLab modules. The GitLab board itself (gitlab_board/app.py,
+# __main__.py, markup.py) is left out, so installing this package adds no GitLab command.
+[tool.hatch.build.targets.wheel]
+include = ["youtrack_board", "gitlab_board/__init__.py", "gitlab_board/glab.py", "gitlab_board/client.py",
+           "gitlab_board/target.py", "gitlab_board/demo.py", "gitlab_board/merge_requests.py"]
+
 [tool.hatch.build.targets.sdist]
-include = ["youtrack_board", "pyproject.toml", "README.md", "LICENSE"]
+include = ["youtrack_board", "gitlab_board/__init__.py", "gitlab_board/glab.py", "gitlab_board/client.py",
+           "gitlab_board/target.py", "gitlab_board/demo.py", "gitlab_board/merge_requests.py",
+           "pyproject.toml", "README.md", "LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/krabilousse/youtrack-board"

@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import shutil
 import sys
 import time
 import webbrowser
@@ -19,7 +20,7 @@ from textual.widgets.option_list import Option
 from . import credentials
 from .client import (Client, YouTrackError, assignable_field, custom_field, field_values, group_issues, movable_field,
                      project_lanes, uses_sprints)
-from .demo import DemoClient, demo_state
+from .demo import DemoClient, demo_gitlab, demo_state
 from .markup import markdown
 from .prefs import Prefs, default_path
 
@@ -158,14 +159,14 @@ class Picker(ModalScreen):
 class CommentDialog(ModalScreen):
     BINDINGS = [('escape', 'dismiss', 'Cancel')]
 
-    def __init__(self, title):
+    def __init__(self, title, placeholder='Comment text', value=''):
         super().__init__()
-        self.prompt = title
+        self.prompt, self.placeholder, self.value = title, placeholder, value
 
     def compose(self) -> ComposeResult:
         with Vertical(id='dialog'):
             yield Label(Text(self.prompt))
-            yield Input(placeholder='Comment text', id='value')
+            yield Input(self.value, placeholder=self.placeholder, id='value')
             yield Static('Enter save  ·  Esc cancel', classes='hint')
 
     def on_mount(self):
@@ -597,13 +598,14 @@ class BoardApp(App):
                 Binding('x', 'clear_filters', 'Show all issues', show=False),
                 Binding('s', 'source', 'Markdown source', show=False),
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
-                Binding('R', 'auto', 'Auto-refresh', show=False),
+                Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
-    def __init__(self, client, prefs=None, connection=None):
+    def __init__(self, client, prefs=None, connection=None, gitlab=None):
         super().__init__()
         self.client = client
+        self.gitlab, self.gitlabs = gitlab, {}  # host -> GitLab client for merge requests; None: glab's, made on first use
         self.connection = connection  # which account and which token, shown once at start
         self.prefs = prefs or Prefs(None, client.base_url)
         self.boards = []
@@ -637,7 +639,7 @@ class BoardApp(App):
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands · C comments · s source · Esc returns)'
+        self.query_one('#details-pane').border_title = 'Details  (Enter expands · C comments · g merge requests · s source)'
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
             self.notify(self.connection, title=f'{self.SERVICE} account', timeout=8)
@@ -1323,6 +1325,67 @@ class BoardApp(App):
         if self.selected:
             self.push_screen(self.comments_screen(self.selected), self.comments_closed)
 
+    def action_merge_requests(self):
+        """Open GitLab merge requests naming the story, in the repository chosen for its project the first time."""
+        if self.selected:
+            url = self.prefs.data['repos'].get((self.selected.get('project') or {}).get('id'))
+            if url:
+                self.open_merge_requests(self.selected, url)
+            else:
+                self.ask_repository(self.selected)
+
+    def ask_repository(self, issue, current=''):
+        if self.gitlab is None and not shutil.which('glab'):
+            self.status('Merge requests come from GitLab through its CLI. Install it (brew install glab), sign in with '
+                        'glab auth login --hostname <your GitLab host>, then press g again.', error=True)
+            return
+        from gitlab_board.merge_requests import repository
+        from gitlab_board.target import TargetError
+        project = issue.get('project') or {}
+
+        def chosen(text):
+            if text:
+                try:
+                    host, path = repository(text)
+                except TargetError as exc:
+                    self.status(f'Not a GitLab project URL: {exc} Nothing was saved; press g to try again.', error=True)
+                    return
+                self.open_merge_requests(issue, f'https://{host}/{path}', check=True)
+        self.push_screen(CommentDialog(f'GitLab repository of {project.get("shortName")} stories',
+                                       'https://gitlab.example.com/group/project', current), chosen)
+
+    def open_merge_requests(self, issue, url, check=False):
+        """The panel for a repository: a new one (check) is saved for the project once GitLab shows it to you."""
+        from gitlab_board.merge_requests import MergeRequestsScreen, repository
+        from gitlab_board.target import TargetError
+        try:
+            host, path = repository(url)
+        except TargetError:  # a hand-edited state file: ask again
+            self.ask_repository(issue, url)
+            return
+        project, key = issue['project'], issue['idReadable']
+
+        async def load():
+            gitlab = self.gitlab_client(host)
+            if check:
+                screen.home = (await gitlab.place(path, 'project'))['path']
+                self.prefs.data['repos'][project['id']] = f'https://{host}/{screen.home}'
+                self.save_prefs()
+                self.notify(f'{project.get("shortName")} merge requests now come from {host}/{screen.home}. '
+                            'Press u in the panel to change it.', markup=False)
+            return await gitlab.project_merge_requests(screen.home, key)
+        screen = MergeRequestsScreen(f'Open merge requests · {key} {plain(issue["summary"])}',
+                                     f'In {host}/{path}, naming {key} in title, branch or description',
+                                     load, host, path, repo=True)
+        self.push_screen(screen, lambda choice: self.ask_repository(issue, url) if choice == 'repo' else
+                         self.focused or self.action_focus_board())
+
+    def gitlab_client(self, host):
+        if host not in self.gitlabs:
+            from gitlab_board.client import Client as GitLab  # only once g is used: the board never needs glab
+            self.gitlabs[host] = (self.gitlab or GitLab)(host)
+        return self.gitlabs[host]
+
     def comments_closed(self, choice):
         if not self.focused:  # the board was re-rendered meanwhile, so the card that had focus is gone
             self.action_focus_board()
@@ -1370,7 +1433,7 @@ def main():
         parser.error('--open requires --setup')
     if args.demo:
         client = DemoClient()
-        BoardApp(client, Prefs(None, client.base_url, demo_state())).run()
+        BoardApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab).run()
         return
     try:
         if args.logout:

@@ -291,7 +291,7 @@ def test_prefs_keep_other_servers_write_atomically_and_survive_bad_files(tmp_pat
     assert Prefs(str(path), 'https://a').data == {'visited': {'y': 5}, 'project': None, 'views': {
         'b': {'mine': False, 'compact': False, 'hidden': ['Done'], 'auto': True},  # only an explicit false turns it off
         'c': {'mine': False, 'compact': False, 'hidden': [], 'auto': True},
-        'd': {'mine': False, 'compact': False, 'hidden': [], 'auto': False}}}
+        'd': {'mine': False, 'compact': False, 'hidden': [], 'auto': False}}, 'repos': {}}
     path.write_text('{not json')
     broken = Prefs(str(path), 'https://a')
     assert broken.warning and broken.data['visited'] == {}

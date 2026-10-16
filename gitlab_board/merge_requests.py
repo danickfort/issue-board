@@ -1,0 +1,194 @@
+"""The open GitLab merge requests linked to a card, read-only, for the GitLab and the YouTrack board.
+
+Status words never claim more than GitLab says: a mergeability GitLab has not checked is "not checked yet", and no
+pipeline is "no pipeline", not "passed". See docs/plans/linked-merge-requests.md.
+"""
+import webbrowser
+from urllib.parse import urlsplit
+
+from rich.text import Text
+from textual import on, work
+from textual.binding import Binding
+from textual.containers import Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Label, OptionList, Static
+from textual.widgets.option_list import Option
+
+from youtrack_board.app import plain
+
+from . import target
+from .glab import GlabError
+
+OPEN = ('opened', 'locked')  # locked: GitLab is merging it right now
+MERGE = {'MERGEABLE': 'ready to merge', 'UNCHECKED': 'mergeability not checked yet', 'CHECKING': 'checking mergeability',
+         'PREPARING': 'preparing the diff', 'CONFLICT': 'conflicts', 'NEED_REBASE': 'needs a rebase',
+         'CI_MUST_PASS': 'pipeline must succeed', 'CI_STILL_RUNNING': 'waits for the pipeline',
+         'DISCUSSIONS_NOT_RESOLVED': 'unresolved threads', 'DRAFT_STATUS': 'draft', 'NOT_APPROVED': 'needs approval',
+         'REQUESTED_CHANGES': 'changes requested', 'BLOCKED_STATUS': 'blocked by another MR', 'NOT_OPEN': 'not open'}
+
+
+def repository(text):
+    """(host, path) of the GitLab project a URL shows, from any of its pages or its https clone URL, or TargetError."""
+    text = text.strip()
+    url = urlsplit(text if '://' in text else 'https://' + text)
+    found = target.parse(f'{url.scheme}://{url.netloc}{url.path.split("/-/")[0].removesuffix(".git")}')
+    if found.kind == 'group':
+        raise target.TargetError('That is a group. Give the URL of the project that holds the code.')
+    return found.host, found.path
+
+
+def merge_status(mr):
+    value = mr.get('detailedMergeStatus')
+    return MERGE.get(value) or (value.lower().replace('_', ' ') if value else 'merge status unknown')
+
+
+def pipeline(mr):
+    head = mr.get('headPipeline')
+    if not head:
+        return 'no pipeline'
+    return 'pipeline ' + ((head.get('detailedStatus') or {}).get('label') or str(head.get('status') or 'unknown').lower())
+
+
+def summary(mr):
+    """What stands between the MR and a merge, in a few words."""
+    words = ['being merged' if mr['state'] == 'locked' else None, 'draft' if mr.get('draft') else None, pipeline(mr),
+             merge_status(mr), 'conflicts' if mr.get('conflicts') else None]
+    return ' · '.join(dict.fromkeys(plain(w) for w in words if w))
+
+
+def approvals(mr):
+    required, left = mr.get('approvalsRequired'), mr.get('approvalsLeft')  # Premium only; absent elsewhere
+    if not required:
+        return None
+    return 'approved' if not left else f'{left} of {required} still needed'
+
+
+def reference(mr, home=None):
+    path = mr['project']['fullPath']
+    return f'!{mr["iid"]}' if path == home else f'{path}!{mr["iid"]}'
+
+
+def web_url(mr, host):
+    """The MR's page, only if it is https on this host and at the MR's own project; else None."""
+    url = mr.get('webUrl') or ''
+    parts = urlsplit(url)
+    page = f'/{mr["project"]["fullPath"]}/-/merge_requests/{mr["iid"]}'
+    ok = parts.scheme == 'https' and parts.netloc.lower() == host and parts.path == page and not (parts.query or parts.fragment)
+    return url if ok else None
+
+
+def details(mr, home=None):
+    source = (mr.get('sourceProject') or {}).get('fullPath')  # None when the fork is hidden from you
+    fork = f'  (from the fork {source})' if source and source != mr['project']['fullPath'] else ''
+    status = [('Pipeline', pipeline(mr).removeprefix('pipeline ')), ('Merge', merge_status(mr)),
+              ('Approvals', approvals(mr)), ('Conflicts', 'yes' if mr.get('conflicts') else None)]
+    updated = (mr.get('updatedAt') or '')[:16].replace('T', ' ')
+    return Text.assemble(
+        (reference(mr, home), 'bold'), f'  {"draft · " if mr.get("draft") else ""}{"being merged" if mr["state"] == "locked" else "open"}\n',
+        plain(f'{mr.get("sourceBranch")} → {mr.get("targetBranch")}{fork}\n'),
+        plain('  ·  '.join(f'{name}: {value}' for name, value in status if value)), '\n',
+        (plain(f'{mr.get("why") or "Linked"}' + (f' · updated {updated} UTC' if updated else '')), 'dim'))
+
+
+class MergeRequestsScreen(ModalScreen):
+    """A card's open MRs, read when it opens and on r. Closing it cancels a request still running, so no late answer
+    lands, and the board behind it stays as it was. Nothing here changes an MR."""
+    BINDINGS = [Binding('escape,g', 'dismiss', 'Close'), Binding('r', 'load', 'Reload'), Binding('o', 'open', 'Browser'),
+                Binding('u', 'dismiss("repo")', 'Change repository')]
+    # Own ids: the boards' #dialog and .hint rules would outrank DEFAULT_CSS.
+    DEFAULT_CSS = '''
+    #mr-dialog { width: 100; max-width: 96%; height: 90%; max-height: 96%; padding: 0 1; border: round $border;
+                 background: $surface; }
+    #mr-title { text-style: bold; }
+    #mr-about { color: $text-muted; }
+    #merge-requests { height: 1fr; margin-top: 1; padding: 0; border: none; scrollbar-size-vertical: 1; }
+    #mr-details { height: auto; max-height: 6; border-top: solid $foreground 25%; }
+    #mr-hint { color: $text-muted; }
+    #mr-hint.error { color: $text-error; }
+    '''
+
+    def __init__(self, title, about, load, host, home=None, repo=False):
+        """load: an async function returning {'mrs', 'more'}, more saying what was not read, if anything. host: where MR pages may open. home: the project whose
+        MRs are named !iid only. repo: u may dismiss with 'repo' to choose another repository."""
+        super().__init__()
+        self.prompt, self.about, self.loader, self.host, self.home, self.repo = title, about, load, host, home, repo
+        self.mrs = []
+
+    def check_action(self, action, parameters):
+        return self.repo or parameters != ('repo',)
+
+    def compose(self):
+        with Vertical(id='mr-dialog'):
+            yield Label(Text(self.prompt), id='mr-title')
+            yield Static(Text(self.about), id='mr-about')
+            yield OptionList(id='merge-requests')
+            yield Static('', id='mr-details')
+            yield Static('', id='mr-hint')
+
+    def on_mount(self):
+        self.query_one(OptionList).focus()
+        self.load()
+
+    def action_load(self):
+        self.load()
+
+    def show(self, message, hint, error=False):
+        self.mrs = []
+        options = self.query_one(OptionList)
+        options.set_options([Option(Text(message, 'dim'), disabled=True)])
+        self.query_one('#mr-details', Static).display = False
+        self.hint(hint, error)
+
+    def hint(self, text, error=False):
+        keys = '  ·  r reload' + ('  ·  u repository' if self.repo else '') + '  ·  Esc back'
+        self.query_one('#mr-hint', Static).update(Text(plain(text) + keys))
+        self.query_one('#mr-hint').set_class(error, 'error')
+
+    @work(exclusive=True)
+    async def load(self):
+        keep = (self.current() or {}).get('webUrl')
+        self.show('Loading merge requests…', 'Loading')
+        try:
+            found = await self.loader()
+        except GlabError as exc:
+            self.show('Could not load the merge requests.', str(exc), error=True)
+            return
+        self.mrs = [mr for mr in found['mrs'] if mr.get('state') in OPEN]
+        notes = [f'{len(self.mrs) or "No"} open']
+        hidden = len(found['mrs']) - len(self.mrs)
+        if hidden:
+            notes.append(f'{hidden} merged or closed not shown')
+        if found.get('more'):
+            notes.append(found['more'])
+        if not self.mrs:
+            self.show('No open merge request is linked.', ' · '.join(notes))
+            return
+        options = self.query_one(OptionList)
+        options.set_options([Option(Text.assemble((reference(mr, self.home), 'bold'), '  ', plain(mr['title']), '\n',
+                                                  ('  ' + summary(mr), 'dim'))) for mr in self.mrs])
+        options.highlighted = next((n for n, mr in enumerate(self.mrs) if mr.get('webUrl') == keep), 0)
+        self.query_one('#mr-details', Static).display = True
+        self.hint(' · '.join(notes) + '  ·  Enter/o browser')
+        self.show_details()
+
+    def current(self):
+        index = self.query_one(OptionList).highlighted
+        return self.mrs[index] if self.mrs and index is not None and index < len(self.mrs) else None
+
+    @on(OptionList.OptionHighlighted)
+    def show_details(self):
+        if self.current():
+            self.query_one('#mr-details', Static).update(details(self.current(), self.home))
+
+    @on(OptionList.OptionSelected)
+    def action_open(self):
+        mr = self.current()
+        if not mr:
+            return
+        url = web_url(mr, self.host)
+        if not url:
+            self.hint(f'Not opening {mr.get("webUrl")}: it is not a merge request page on {self.host}.', error=True)
+        elif webbrowser.open(url):
+            self.app.notify(url, title=f'Opening {reference(mr, self.home)}', markup=False)
+        else:
+            self.hint(f'No browser available. Open {url}', error=True)

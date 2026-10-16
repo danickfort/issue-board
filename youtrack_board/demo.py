@@ -116,9 +116,20 @@ def demo_comment(login, hours, edited, group, text):
 
 
 def demo_state():
-    """Visits a returning user would have, so the recent-first ordering is visible in the demo."""
+    """Visits a returning user would have, so the recent-first ordering is visible in the demo. DEMO's GitLab repository
+    is chosen already; WEB's is not, so g on a WEB story asks for one."""
     now = time.time()
-    return {'visited': {'product': now - 300, 'ops': now - 86400}}
+    return {'visited': {'product': now - 300, 'ops': now - 86400},
+            'repos': {PROJECTS['DEMO']['id']: 'https://gitlab.example.com/demo/portal'}}
+
+
+def demo_gitlab(host):
+    """The GitLab board demo's offline GitLab, for the merge requests panel. It never runs glab."""
+    from gitlab_board.demo import HOST, DemoClient
+    from gitlab_board.glab import GlabError
+    if host != HOST:
+        raise GlabError(f'The demo has only {HOST}, with demo/portal and demo/api.')
+    return DemoClient()
 
 
 class DemoClient:

@@ -26,6 +26,7 @@ from .demo import HOST as DEMO_HOST
 from .demo import DemoClient, demo_state
 from .glab import GlabError
 from .markup import glfm
+from .merge_requests import MergeRequestsScreen
 
 ASK = '\x00ask'  # picker value for "enter a URL or path"; never a GitLab path
 
@@ -348,6 +349,15 @@ class GitLabApp(BoardApp):
 
     def comments_screen(self, issue, writable=True):
         return NotesScreen(self.client, issue, writable)
+
+    def action_merge_requests(self):
+        if self.selected:
+            issue = self.selected
+            self.push_screen(MergeRequestsScreen(
+                f'Open merge requests · {self.ref(issue)} {plain(issue["title"])}',
+                'Linked on GitLab, as on the issue page: closing or mentioning this issue',
+                lambda: self.client.issue_merge_requests(issue), self.client.host, project_path(issue)),
+                lambda _: self.focused or self.action_focus_board())
 
     def list_of(self, issue=None):
         """The list the selected card sits in (it can sit in several), else the focused column's."""

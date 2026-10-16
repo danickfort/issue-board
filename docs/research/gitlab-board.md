@@ -87,6 +87,7 @@ GitLab source, `gitlab-org/gitlab` (paths under <https://gitlab.com/gitlab-org/g
 | Members to assign | REST `GET /projects/:path/members/all`, 100 per page, at most 5 pages | Active members with at least the Guest role |
 | Comments | REST `GET /projects/:path/issues/:iid/notes?sort=desc&order_by=created_at&activity_filter=only_comments`, at most 20 pages | System notes are also dropped locally |
 | Write a comment | REST `POST /projects/:path/issues/:iid/notes`, JSON body on stdin | No GraphQL, so the 10,000-character query limit never applies to the comment |
+| An issue's merge requests (`g`) | GraphQL `workItem(id) { widgets { … on WorkItemWidgetDevelopment { closingMergeRequests relatedMergeRequests } } }`, 100 each | As GitLab's issue page; one issue per request. See [linked merge requests](../plans/linked-merge-requests.md) |
 
 **How glab is run.**
 
@@ -110,6 +111,7 @@ GitLab source, `gitlab-org/gitlab` (paths under <https://gitlab.com/gitlab-org/g
 | --- | --- | --- | --- |
 | Project and group boards | Several per project in all tiers; several per group needs Premium | Docs | Both, from a URL or the place picker; references are `project#iid` on group boards |
 | Open, Closed | Open: open issues no other list claims. Closed: all closed issues, newest closed first | Docs, Source (`ListService#order`) | Shown as GitLab returns them |
+| Column order | Open is always leftmost, Closed always rightmost; other lists have a saved position | [Docs](https://docs.gitlab.com/user/project/issue_board/#issue-board-terminology) | Normalized after reading the API, whose raw order can put Closed second |
 | Label lists | Open issues with the label. An issue with two list labels appears in **both** lists | Docs, Source (`with_list_label`) | Shown in both; a move starts from the list the card is in |
 | Assignee, milestone, iteration lists | Open issues with that user, milestone or iteration; the Open list excludes them | Tier, Source (EE `ListService`) | Shown and movable |
 | Status lists | Issues with that work item status, **open or closed** (no state filter) | Tier, Source (`set_state` skips status lists) | Shown and movable; the example board uses them |
@@ -204,6 +206,7 @@ Same: as in the YouTrack app. Different: the GitLab concept differs and the app 
 | Reorder within a list | Not supported | Not implemented (`positionInList`, `moveBeforeId` exist) | Not implemented |
 | Write a comment | Single line | Single line, REST; lines starting with `/` refused (quick actions) | Same |
 | Read comments | Newest first, all pages, visibility | Newest first, up to 2,000, system notes hidden, internal notes marked, threads flattened | Same |
+| Linked merge requests (`g`) | Open MRs in the project's chosen repository that name the story ID | Open MRs GitLab links to the issue (closing or mentioning, any project), with pipeline and merge status; read-only | Different |
 | Internal notes | n/a | Read and marked; writing one is not offered | Not implemented |
 | Permission errors | From the server | Checked first from `userPermissions`, then from the server | Same |
 | Control and markup stripping | Plain metadata | Same, and notifications never read GitLab text as markup | Same |

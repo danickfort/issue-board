@@ -14,6 +14,7 @@ from .target import ENUMS
 NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 FIRST = 100  # issues per list on the board; GitLab's maximum page size
 PEOPLE_PAGES = 5  # up to 500 project members in the assign picker
+OPEN_PAGES = 5  # up to 500 open merge requests searched for a story ID
 NOTE_PAGES = 20  # up to 2,000 comments
 ISSUE = ('id iid title reference(full: true) webUrl state confidential closedAt dueDate type '
          'milestone { title } assignees { nodes { username name } } labels { nodes { title } } '
@@ -21,6 +22,10 @@ ISSUE = ('id iid title reference(full: true) webUrl state confidential closedAt 
 ISSUE_EE = ISSUE + ' weight healthStatus iteration { title } epic { id iid title } status { name }'
 LIST = 'id title listType position collapsed issuesCount label { title }'
 LIST_EE = LIST + ' maxIssueCount limitMetric assignee { username name } milestone { title } iteration { title }'
+# A merge request's status, as the panel shows it (see docs/plans/linked-merge-requests.md). Approvals are Premium.
+MR = ('iid title webUrl state draft sourceBranch targetBranch conflicts detailedMergeStatus updatedAt '
+      'project { fullPath } sourceProject { fullPath } headPipeline { status detailedStatus { label } }')
+MR_EE = MR + ' approvalsLeft approvalsRequired'
 BOARD = 'id name webUrl hideBacklogList hideClosedList'
 BOARD_EE = BOARD + (' weight milestone { id title } iteration { id title } iterationCadence { id } assignee { username } '
                     'labels(first: 100) { nodes { title } }')
@@ -151,6 +156,23 @@ def describe_move(effects):
     return ', '.join(words) or 'reorders only'
 
 
+def issue_links(closing, related):
+    """Each MR once, saying how it is linked: closing MRs also appear among the related ones."""
+    found = {}
+    for mr in related + closing:
+        found.setdefault((mr['project']['fullPath'], mr['iid']), {**mr, 'why': 'Mentions this issue'})
+    for mr in closing:
+        found[(mr['project']['fullPath'], mr['iid'])]['why'] = 'Closes this issue when merged'
+    return list(found.values())
+
+
+def mentions(key, mr):
+    """Where an MR names a story ID as a whole token, ignoring case: 'title, branch', or ''. DEMO-1 is not DEMO-10."""
+    token = re.compile(rf'(?<![A-Za-z0-9]){re.escape(key)}(?![A-Za-z0-9])', re.IGNORECASE)
+    return ', '.join(name for name, text in (('title', mr.get('title')), ('branch', mr.get('sourceBranch')),
+                                             ('description', mr.get('description'))) if token.search(text or ''))
+
+
 def check_comment(text):
     """The comment to send, or GlabError: GitLab runs a line starting with / as a quick action (/close, /assign…)."""
     text = text.strip()
@@ -242,7 +264,10 @@ class Client:
         if not found_board:
             raise GlabError(f'Board {board.get("name")} is no longer available.')
         epic_nodes = (found_board.get('epics') or {}).get('nodes') if epics and not lanes_error else None
-        return {'lists': [flat_list(n) for n in (found_board.get('lists') or {}).get('nodes') or []],
+        nodes = (found_board.get('lists') or {}).get('nodes') or []
+        # GitLab pins Open and Closed at the edges; only the middle lists use their saved position.
+        nodes = sorted(nodes, key=lambda n: ({'backlog': 0, 'closed': 2}.get(n['listType'], 1), n.get('position') or 0))
+        return {'lists': [flat_list(n) for n in nodes],
                 'epics': epic_nodes, 'lanes_error': lanes_error}
 
     async def list_page(self, place, board, list_id, found, after=None, first=50):
@@ -300,6 +325,57 @@ class Client:
     async def comment(self, issue, text):
         path = f'projects/{quote(project_path(issue), safe="")}/issues/{int(issue["iid"])}/notes'
         await self.glab.post(path, {'body': check_comment(text)})
+
+    async def issue_merge_requests(self, issue):
+        """The MRs GitLab's issue page lists under Development, in every state, as far as the account may read them:
+        those that close the issue when merged, and those that mention it (in its description or comments, or by a
+        cross-reference from an MR, a commit or another project). Returns {'mrs', 'more'}; more says what was cut.
+        GitLab resolves these for one issue per request, so they are read for the selected card only."""
+        work_item = literal(f'gid://gitlab/WorkItem/{int(number(issue["id"]))}')  # an issue is a work item, same id
+        data = await self.ask(lambda ee: (
+            f'query {{ workItem(id: {work_item}) {{ widgets {{ ... on WorkItemWidgetDevelopment {{ '
+            f'closingMergeRequests(first: {FIRST}) {{ pageInfo {{ hasNextPage }} nodes {{ mergeRequest {{ {MR_EE if ee else MR} }} }} }} '
+            f'relatedMergeRequests(first: {FIRST}) {{ pageInfo {{ hasNextPage }} nodes {{ {MR_EE if ee else MR} }} }} }} }} }} }}'))
+        if not data.get('workItem'):
+            raise GlabError(f'GitLab did not return {issue.get("reference")}: it may be gone, or hidden from you.')
+        widget = next((w for w in data['workItem'].get('widgets') or [] if w and 'closingMergeRequests' in w), {})
+        closing, related = widget.get('closingMergeRequests') or {}, widget.get('relatedMergeRequests') or {}
+        # shortcut: the first FIRST of each; no issue checked had more than 3. Page by cursor if that changes.
+        more = any((part.get('pageInfo') or {}).get('hasNextPage') for part in (closing, related)) and \
+            f'GitLab links more; the first {FIRST} closing and {FIRST} mentioning are shown'
+        return {'mrs': issue_links([n['mergeRequest'] for n in closing.get('nodes') or [] if n.get('mergeRequest')],
+                                   related.get('nodes') or []), 'more': more}
+
+    async def project_merge_requests(self, path, key):
+        """The project's open MRs that name a story ID in their title, source branch or description, as YouTrack's
+        GitLab integration links them; MRs from forks count, since they target the project. Read 100 at a time, light,
+        then the status of the matches only. Returns {'mrs', 'more'}; more says what was not searched."""
+        found, after, more = {}, None, False
+        for _ in range(OPEN_PAGES):
+            cursor = f', after: {literal(after)}' if after else ''
+            data = await self.glab.graphql(
+                f'query {{ project(fullPath: {literal(path)}) {{ mergeRequests(state: opened, first: {FIRST}{cursor}) '
+                f'{{ pageInfo {{ hasNextPage endCursor }} nodes {{ iid title sourceBranch description }} }} }} }}')
+            if not data.get('project'):
+                raise GlabError(f'GitLab has no project {path} that you can see.')
+            page = data['project'].get('mergeRequests') or {}
+            found.update((mr['iid'], where) for mr in page.get('nodes') or [] if (where := mentions(key, mr)))
+            info = page.get('pageInfo') or {}
+            if not info.get('hasNextPage'):
+                break
+            after = info.get('endCursor')
+        else:  # shortcut: projects with more open MRs are rare; search on the server if that changes
+            more = f'only the first {FIRST * OPEN_PAGES} open merge requests of {path} were searched'
+        if not found:
+            return {'mrs': [], 'more': more}
+        nodes, ids = [], list(found)
+        for offset in range(0, len(ids), FIRST):
+            batch = ids[offset:offset + FIRST]
+            data = await self.ask(lambda ee: (
+                f'query {{ project(fullPath: {literal(path)}) {{ mergeRequests(iids: {literal(batch)}, '
+                f'first: {len(batch)}) {{ nodes {{ {MR_EE if ee else MR} }} }} }} }}'))
+            nodes.extend(((data.get('project') or {}).get('mergeRequests') or {}).get('nodes') or [])
+        return {'mrs': [{**mr, 'why': f'Names {key} in its {found[mr["iid"]]}'} for mr in nodes], 'more': more}
 
     async def close(self):
         pass

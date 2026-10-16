@@ -8,7 +8,7 @@ import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
-from .client import check_comment, move_effects, number, project_path
+from .client import check_comment, issue_links, mentions, move_effects, number, project_path
 from .glab import GlabError
 
 HOST = 'gitlab.example.com'
@@ -89,6 +89,26 @@ NOTES = {
                                  '- [x] Read comments\n- [ ] Reply from the terminal\n\n' + 'A long comment wraps. ' * 12)],
     1: [('priya', 5, False, False, 'Focus order looks right with a screen reader.')],
 }
+# Merge requests: (project, title, source branch, description, state, draft, pipeline, merge status, conflicts,
+# fork, issues it closes, issues it mentions). Titles, branches and descriptions also name YouTrack demo stories
+# (DEMO-3), for the YouTrack board's demo; DEMO-10 must not count as DEMO-1.
+MERGE_REQUESTS = [
+    ('portal', 'Run requests through glab (DEMO-3)', 'DEMO-3-glab', '', 'opened', False, 'SUCCESS', 'NOT_APPROVED', False,
+     None, ['portal#3'], []),
+    ('portal', 'Draft: Explain sign-in errors', 'sign-in-errors', "Shows glab's own message. Part of DEMO-3.", 'opened', True,
+     'FAILED', 'DRAFT_STATUS', False, 'sam/portal', [], ['portal#3']),
+    ('api', 'Rate limit glab calls', '3-rate-limit', '', 'opened', False, 'RUNNING', 'CI_STILL_RUNNING', False, None, [],
+     ['portal#3']),
+    ('portal', 'First glab spike', 'spike-glab', 'For DEMO-3.', 'merged', False, 'SUCCESS', 'NOT_OPEN', False, None, [],
+     ['portal#3']),
+    ('portal', 'Arrow keys across lanes', 'demo-1-lanes', '', 'opened', False, None, 'CHECKING', True, None, ['portal#1'], []),
+    ('portal', 'Export dates as ISO 8601', 'DEMO-10-export-dates', '', 'opened', False, 'SUCCESS', 'UNCHECKED', False, None,
+     [], ['portal#9']),
+    ('api', 'Answer 404 for archived permits', 'archived-404', '', 'opened', False, 'SUCCESS', 'MERGEABLE', False, None,
+     ['api#3'], []),
+    ('api', 'Prices endpoint for the pricing page', 'web-2-prices', 'Needed by WEB-2.', 'opened', False, 'PENDING',
+     'CI_MUST_PASS', False, None, [], []),
+]
 
 
 def stamp(hours):
@@ -127,6 +147,19 @@ class DemoClient:
                 'canAdmin': project == 'portal' or n % 2 == 0, 'canComment': True, 'position': n})
         for iid, thread in NOTES.items():
             self.threads[f'demo/portal#{iid}'] = [self.note(*note) for note in thread]
+        self.merge_requests, counters = [], {}
+        for n, item in enumerate(MERGE_REQUESTS):
+            project, title, branch, text, state, draft, pipeline, status, conflicts, fork, closes, mentions = item
+            counters[project] = iid = counters.get(project, 0) + 1
+            path = f'demo/{project}'
+            self.merge_requests.append(({
+                'iid': str(iid), 'title': title, 'webUrl': f'{self.base_url}/{path}/-/merge_requests/{iid}', 'state': state,
+                'draft': draft, 'sourceBranch': branch, 'targetBranch': 'main', 'description': text, 'conflicts': conflicts,
+                'detailedMergeStatus': status, 'updatedAt': stamp(n + 1), 'project': {'fullPath': path},
+                'sourceProject': {'fullPath': fork or path}, 'approvalsRequired': 2 if status == 'NOT_APPROVED' else 0,
+                'approvalsLeft': 1 if status == 'NOT_APPROVED' else 0,
+                'headPipeline': pipeline and {'status': pipeline, 'detailedStatus': {
+                    'label': {'SUCCESS': 'passed'}.get(pipeline, pipeline.lower())}}}, closes, mentions))
 
     @staticmethod
     def note(author, hours, edited, internal, body):
@@ -271,6 +304,17 @@ class DemoClient:
 
     async def notes(self, issue):
         return sorted(deepcopy(self.threads.get(issue['reference'], [])), key=lambda n: n['created_at'], reverse=True)
+
+    async def issue_merge_requests(self, issue):
+        ref = issue['reference'].removeprefix('demo/')
+        linked = [(mr, ref in closes) for mr, closes, mentions in self.merge_requests if ref in closes + mentions]
+        return {'mrs': issue_links([deepcopy(mr) for mr, closes in linked if closes], [deepcopy(mr) for mr, _ in linked]),
+                'more': False}
+
+    async def project_merge_requests(self, path, key):
+        return {'mrs': [{**deepcopy(mr), 'why': f'Names {key} in its {where}'} for mr, _, _ in self.merge_requests
+                        if mr['project']['fullPath'] == path and mr['state'] == 'opened' and (where := mentions(key, mr))],
+                'more': False}
 
     async def comment(self, issue, text):
         check_comment(text)

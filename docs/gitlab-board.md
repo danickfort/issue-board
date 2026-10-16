@@ -33,7 +33,7 @@ uv sync
 uv run python -m gitlab_board --demo
 ```
 
-No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, and `B` on its Open list to page through 122 issues.
+No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, and `g` on #3 (*Doing*) for its merge requests.
 
 To see how the app reads a board URL whose filters repeat, as the GitLab example does:
 
@@ -76,11 +76,20 @@ If glab is missing or not signed in, the app says so and prints the `glab` comma
 | `m` | Move the card to another list. Each choice shows what GitLab changes: labels, open or closed, assignee, milestone, iteration or status |
 | `a` | Assign a project member, or unassign. Replaces all current assignees |
 | `c`, `C` | Write a one-line comment; read comments, newest first |
+| `g` | The issue's open [merge requests](#merge-requests) and their status, read-only |
 | `s`, `o` | Markdown source or formatted text; open the issue in the browser |
 | `B` | The focused list in full, 50 issues at a time (Open is GitLab's backlog list), read-only |
 | `b`, `p` | Another board here; another project or group, or a URL or path |
 | `r`, `R` | Reload; auto-refresh every 5 s on or off for this board |
 | `?`, `q` | All keys; quit |
+
+## Merge requests
+
+`g` lists the selected issue's open merge requests (MRs), the ones GitLab's issue page shows under *Development*: MRs that close the issue when merged, and MRs that mention it (in the issue's description or comments, or from an MR, a commit or another project, which GitLab records as "mentioned in"). No setup is needed. MRs in other projects of the same GitLab are included, shown as `group/project!12`; MRs from forks too.
+
+Each MR shows whether it closes or mentions the issue, draft, pipeline (or "no pipeline"), GitLab's merge status ("ready to merge", "needs approval", "conflicts"…, "not checked yet" while GitLab has not computed it) and, on Premium, approvals. Merged and closed MRs are counted, not listed. `Enter` or `o` opens an MR in the browser if its address is an MR page on the board's host. `r` reloads; Escape or `g` returns to the card. MRs are read for the selected issue when the panel opens (one GraphQL query) and on `r`, never by auto-refresh. The panel only reads.
+
+Not listed: MRs GitLab hides from your account, and branches without an MR. Up to 100 closing and 100 mentioning MRs are read; the panel says when GitLab has more. Sources and limits: [docs/plans/linked-merge-requests.md](plans/linked-merge-requests.md).
 
 ## What is saved
 
@@ -93,4 +102,4 @@ uv run pytest -q                       # YouTrack and GitLab tests; no network, 
 uv run pytest -q tests/test_gitlab.py  # GitLab only
 ```
 
-The GitLab tests run a fake `glab` executable to check argv, stdin, environment, errors and process cleanup, and drive the real TUI against the offline demo at 80×24 and 60×20.
+The merge request tests (`tests/test_merge_requests.py`) cover both boards. The GitLab tests run a fake `glab` executable to check argv, stdin, environment, errors and process cleanup, and drive the real TUI against the offline demo at 80×24 and 60×20.

@@ -1,4 +1,5 @@
-"""Local, per-server view state: when boards were last opened here, the project scope, and per-board view options.
+"""Local, per-server view state: when boards were last opened here, the project scope, per-board view options, and
+the GitLab repository of each project for its merge requests.
 
 Nothing here is sent to YouTrack and no credentials are stored.
 """
@@ -49,7 +50,9 @@ def clean(section, view=clean_view):
     project = section.get('project')
     return {'visited': {k: v for k, v in _dict(section.get('visited')).items() if type(v) in (int, float)},
             'project': project if isinstance(project, str) else None,
-            'views': {k: view(v) for k, v in _dict(section.get('views')).items()}}
+            'views': {k: view(v) for k, v in _dict(section.get('views')).items()},
+            # project id -> the GitLab project URL whose merge requests the board shows for its stories
+            'repos': {k: v for k, v in _dict(section.get('repos')).items() if isinstance(v, str)}}
 
 
 class Prefs:
