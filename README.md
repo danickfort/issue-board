@@ -216,6 +216,17 @@ This version shows board or sprint members in configured status columns. Project
 
 It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devportal/youtrack-rest-api.html) directly. A separate CLI would add installation and output-format coupling for this small feature set. Board and sprint lists and issue searches are paginated. Boards with sprints disabled use `has: {Board <name>}`; sprint membership uses the documented [board search attribute](https://www.jetbrains.com/help/youtrack/cloud/search-and-command-attributes.html#board-name). Names containing braces, backslashes, or newlines are rejected rather than interpolated into a query.
 
+## GitLab board (source checkout only)
+
+The repository also holds a GitLab version of the board in `gitlab_board/`. It is **not** part of the Homebrew release: Homebrew installs only `youtrack-board`. From a source checkout, with the [GitLab CLI](https://gitlab.com/gitlab-org/cli) signed in (`glab auth login --hostname gitlab.com`):
+
+```sh
+uv run python -m gitlab_board --demo                       # offline sample boards; runs no glab
+uv run python -m gitlab_board 'https://gitlab.com/<group>/<project>/-/boards/<id>'
+```
+
+Setup, keys and saved state: [docs/gitlab-board.md](docs/gitlab-board.md). Findings and limits: [docs/research/gitlab-board.md](docs/research/gitlab-board.md).
+
 ## Development
 
 This section is for running or changing the source code. Homebrew users can skip it. A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).

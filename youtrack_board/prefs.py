@@ -26,9 +26,9 @@ def write_json(path, data):
         raise
 
 
-def default_path():
+def default_path(app='youtrack-board'):
     base = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
-    return os.path.join(base, 'youtrack-board', 'state.json')
+    return os.path.join(base, app, 'state.json')
 
 
 def _dict(value):
@@ -43,20 +43,22 @@ def clean_view(view):
             'auto': view.get('auto') is not False}  # auto-refresh is on until turned off for the board
 
 
-def clean(section):
+def clean(section, view=clean_view):
     """Keep only well-formed values, so a hand-edited or older file cannot break the app."""
     section = _dict(section)
     project = section.get('project')
     return {'visited': {k: v for k, v in _dict(section.get('visited')).items() if type(v) in (int, float)},
             'project': project if isinstance(project, str) else None,
-            'views': {k: clean_view(v) for k, v in _dict(section.get('views')).items()}}
+            'views': {k: view(v) for k, v in _dict(section.get('views')).items()}}
 
 
 class Prefs:
+    VIEW = staticmethod(clean_view)  # the per-board view options this app keeps
+
     def __init__(self, path, server, section=None):
         """Without a path, state starts from `section` and stays in memory (the demo and tests use this)."""
         self.path, self.server, self.warning = path, server, None
-        self.data = clean(self.read().get(server) if path else section)
+        self.data = clean(self.read().get(server) if path else section, self.VIEW)
 
     def read(self):
         try:
@@ -91,7 +93,7 @@ class Prefs:
             del visited[old]
 
     def view(self, board_id):
-        return clean_view(self.data['views'].get(board_id))
+        return self.VIEW(self.data['views'].get(board_id))
 
     def set_view(self, board_id, **changes):
         self.data['views'][board_id] = {**self.view(board_id), **changes}

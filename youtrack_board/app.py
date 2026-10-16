@@ -324,8 +324,12 @@ class Row(ListItem):
 
 
 class More(ListItem):
+    def __init__(self, text):
+        super().__init__()
+        self.text = text
+
     def compose(self):
-        yield Static(Text(f'More in YouTrack · Enter or n loads the next {BacklogScreen.PAGE}', 'italic'))
+        yield Static(Text(self.text, 'italic'))
 
 
 class Issues(ListView):
@@ -345,6 +349,7 @@ class BacklogScreen(ModalScreen):
     YouTrack keeps for it. It covers the board and only reads. Closing it cancels its requests, so no late answer lands,
     and the board underneath is left exactly as it was."""
     PAGE = 50
+    MORE = 'More in YouTrack'
     BINDINGS = [Binding('escape', 'back', 'Board'), Binding('B', 'dismiss', 'Board', show=False),
                 Binding('slash', 'search', 'Search'), Binding('n', 'more', 'More'), Binding('C', 'comments', 'Comments'),
                 Binding('o', 'open', 'Browser'), Binding('s', 'source', 'Markdown source', show=False),
@@ -450,10 +455,11 @@ class BacklogScreen(ModalScreen):
     async def render_rows(self, keep=None):
         async with self.rendering:  # typing while a page arrives must not mount the rows twice
             shown = [i for i in self.issues if self.matches(i)]
-            width = max((len(i['idReadable']) for i in shown), default=0)
+            width = max((len(self.app.ref(i)) for i in shown), default=0)
             listing = self.query_one('#backlog', ListView)
             await listing.clear()
-            await listing.extend([*(Row(i, self.field, width) for i in shown), *([More()] if self.more else [])])
+            more = More(f'{self.MORE} · Enter or n loads the next {self.PAGE}')
+            await listing.extend([*(self.row(i, width) for i in shown), *([more] if self.more else [])])
             listing.index = next((n for n, i in enumerate(shown) if i['id'] == keep), 0 if len(listing) else None)
             self.show_counts(len(shown))
 
@@ -472,11 +478,17 @@ class BacklogScreen(ModalScreen):
             self.note(' · '.join(filter(None, [f'{loaded} issues{" loaded" if self.more else ""}, in backlog order', more])),
                       'No issue selected.')
 
+    def row(self, issue, width):
+        return Row(issue, self.field, width)
+
+    def details(self, issue):
+        return issue_details(issue, self.field, self.app.source)
+
     @on(ListView.Highlighted, '#backlog')
     def show_details(self):
         item, details = self.query_one('#backlog', ListView).highlighted_child, self.query_one('#details', Static)
         if isinstance(item, Row):
-            details.update(issue_details(item.issue, self.field, self.app.source))
+            details.update(self.details(item.issue))
         elif isinstance(item, More):
             details.update(Text(f'Enter or n loads the next {self.PAGE} issues of the backlog.', 'dim'))
         else:
@@ -504,7 +516,7 @@ class BacklogScreen(ModalScreen):
 
     def action_comments(self):
         if self.current():
-            self.app.push_screen(CommentsScreen(self.client, self.current(), writable=False), lambda _: self.show_details())
+            self.app.push_screen(self.app.comments_screen(self.current(), writable=False), lambda _: self.show_details())
 
     def action_open(self):
         if self.current():
@@ -517,6 +529,9 @@ class BacklogScreen(ModalScreen):
 
 class BoardApp(App):
     TITLE = 'YouTrack Board'
+    SERVICE = 'YouTrack'
+    ERROR = YouTrackError  # what the client raises when the service refuses or cannot be reached
+    CARD = Card
     REFRESH = 5  # seconds between auto-refreshes of the board on screen
     AUTO_FOCUS = None
     ESCAPE_TO_MINIMIZE = False
@@ -625,7 +640,7 @@ class BoardApp(App):
         self.query_one('#details-pane').border_title = 'Details  (Enter expands · C comments · s source · Esc returns)'
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
-            self.notify(self.connection, title='YouTrack account', timeout=8)
+            self.notify(self.connection, title=f'{self.SERVICE} account', timeout=8)
         if self.prefs.warning:
             self.notify(self.prefs.warning, severity='warning')
         self.show_auto()
@@ -761,8 +776,8 @@ class BoardApp(App):
     async def fetch_issues(self):
         self.status('Loading issues…')
         try:
-            self.issues_data = await self.client.issues(self.board_data, self.sprint_data)
-        except YouTrackError as exc:
+            self.issues_data = await self.read()
+        except self.ERROR as exc:
             self.status(f'{exc} — press r to retry.', error=True)
             return
         self.answered()
@@ -790,10 +805,10 @@ class BoardApp(App):
         an answer for a board or sprint no longer shown, or arriving under a dialog, is dropped."""
         shown = self.board_data, self.sprint_data
         try:
-            issues = await self.client.issues(*shown)
-        except YouTrackError as exc:
+            issues = await self.read()
+        except self.ERROR as exc:
             if self.slowdown == 1:  # once per outage, not on every retry
-                self.notify(f'{exc} The board keeps what it showed; retrying less often until YouTrack answers.',
+                self.notify(f'{exc} The board keeps what it showed; retrying less often until {self.SERVICE} answers.',
                             title='Auto-refresh failed', severity='warning', timeout=10)
             self.slowdown = min(self.slowdown * 2, 12)  # 10, 20, 40, then 60 s
             self.skip = self.slowdown - 1
@@ -803,6 +818,10 @@ class BoardApp(App):
         if issues != self.issues_data and (self.board_data, self.sprint_data) == shown and self.may_poll():
             self.issues_data = issues
             await self.render_board()
+
+    async def read(self):
+        """The issues of the board (and sprint) on screen, as the service has them now."""
+        return await self.client.issues(self.board_data, self.sprint_data)
 
     def answered(self):
         """YouTrack answered: auto-refresh is back to its normal pace."""
@@ -887,26 +906,28 @@ class BoardApp(App):
             with self.batch_update():  # never paint it half rebuilt; an empty board would also lose its scroll position
                 await board.remove_children()
                 await heads.remove_children()
-                lanes = self.board_data and project_lanes(self.board_data, self.visible_issues())
+                lanes = self.board_data and self.lanes(self.visible_issues())
                 board.set_class(lanes is not None, '-lanes')
                 heads.display = lanes is not None
                 if self.board_data:
                     view = self.view()
-                    groups = group_issues(self.board_data, self.visible_issues())
+                    groups = self.groups(self.visible_issues())
                     if lanes is not None:
                         columns = await self.render_lanes(lanes, [(t, c) for t, c in groups if t not in view['hidden']])
                     else:
                         for title, cards in groups:
                             if title not in view['hidden']:
-                                columns.append(Column(*(Card(i, view['compact']) for i in cards)))
-                                columns[-1].border_title = f'{title} · {len(cards)}'
+                                columns.append(Column(*(self.CARD(i, view['compact']) for i in cards)))
+                                columns[-1].border_title = self.column_label(title, cards)
                         await board.mount_all(columns)
                     if groups and not any(t not in view['hidden'] for t, _ in groups):
                         await board.mount(Static('All columns are hidden. Press v to choose columns.', classes='empty'))
                     self.fit_columns()
                     self.follow_board(board.scroll_x)
                     self.show_counts()
-            found = next(((c, n) for c in columns for n, card in enumerate(c.children) if card.issue['id'] == wanted), None)
+            # An issue can sit in several columns: look in the column that had focus first.
+            ranked = ([columns[spot[0]]] if spot and spot[0] < len(columns) else []) + columns
+            found = next(((c, n) for c in ranked for n, card in enumerate(c.children) if card.issue['id'] == wanted), None)
             column, index = found or (None, None)
             if spot and not found and columns:  # the card left, or focus was on an empty cell: stay at the same place
                 column = columns[min(spot[0], len(columns) - 1)]
@@ -924,26 +945,39 @@ class BoardApp(App):
     async def render_lanes(self, lanes, groups):
         """A row per project swimlane, each split into the same status columns as the headers above."""
         compact, rows = self.view()['compact'], []
-        await self.query_one('#heads').mount_all(Static(Text(f'{title} · {len(cards)}')) for title, cards in groups)
+        await self.query_one('#heads').mount_all(Static(Text(self.column_label(title, cards))) for title, cards in groups)
         for value, issues in lanes:
-            cells = dict(group_issues(self.board_data, issues))
+            cells = dict(self.groups(issues))
             shown = {i['id'] for title, _ in groups for i in cells.get(title, [])}
             if not shown:  # an empty lane would only push the others down
                 continue
-            if value:
-                name, full = plain(value.get('name')), plain(value.get('presentation'))
-                label = Text.assemble((name, 'bold'), f'  {full}' if full and full != name else '', (f'  {len(shown)}', 'dim'))
-            else:
-                hidden = self.board_data.get('hideOrphansSwimlane')
-                label = Text.assemble(('Uncategorized cards', 'bold'), (f'  {len(shown)}', 'dim'),
-                                      ('  · not a lane on the YouTrack board' if hidden else '', 'dim'))
-            rows.append([Column(*(Card(i, compact) for i in cells.get(title, [])), classes='-lane') for title, _ in groups])
-            await self.query_one('#board').mount_all([Static(label, classes='lane'), Horizontal(*rows[-1], classes='lane-row')])
+            rows.append([Column(*(self.CARD(i, compact) for i in cells.get(title, [])), classes='-lane') for title, _ in groups])
+            await self.query_one('#board').mount_all([Static(self.lane_label(value, len(shown)), classes='lane'),
+                                                      Horizontal(*rows[-1], classes='lane-row')])
         if groups and not rows:
             reasons = ', '.join(self.filters())
             await self.query_one('#board').mount(Static(
                 f'No cards match {reasons}. Press x to show all issues.' if reasons else 'No cards to show.', classes='empty'))
         return [cell for row in rows for cell in row]
+
+    def groups(self, issues):
+        """(column title, its issues) for the given issues, in board order."""
+        return group_issues(self.board_data, issues)
+
+    def lanes(self, issues):
+        """(lane value, its issues) per swimlane, or None when the board shows no swimlanes."""
+        return project_lanes(self.board_data, issues)
+
+    def lane_label(self, value, count):
+        if value:
+            name, full = plain(value.get('name')), plain(value.get('presentation'))
+            return Text.assemble((name, 'bold'), f'  {full}' if full and full != name else '', (f'  {count}', 'dim'))
+        hidden = self.board_data.get('hideOrphansSwimlane')
+        return Text.assemble(('Uncategorized cards', 'bold'), (f'  {count}', 'dim'),
+                             ('  · not a lane on the YouTrack board' if hidden else '', 'dim'))
+
+    def column_label(self, title, cards):
+        return f'{title} · {len(cards)}'
 
     def on_resize(self):
         self.fit_columns()
@@ -1020,9 +1054,15 @@ class BoardApp(App):
     def show_details(self):
         details = self.query_one('#details', Static)
         if self.selected:
-            details.update(issue_details(self.selected, column_field(self.board_data), self.source))
+            details.update(self.details(self.selected))
         else:
             details.update('No card selected.')
+
+    def ref(self, issue):
+        return issue['idReadable']
+
+    def details(self, issue):
+        return issue_details(issue, column_field(self.board_data), self.source)
 
     def action_source(self):
         self.source = not self.source
@@ -1276,9 +1316,12 @@ class BoardApp(App):
             self.push_screen(CommentDialog(f'Comment on {issue["idReadable"]}'), lambda value: value and self.write(
                 issue, lambda: self.client.comment(issue, value), f'Comment added to {issue["idReadable"]}.', reload=False))
 
+    def comments_screen(self, issue, writable=True):
+        return CommentsScreen(self.client, issue, writable)
+
     def action_comments(self):
         if self.selected:
-            self.push_screen(CommentsScreen(self.client, self.selected), self.comments_closed)
+            self.push_screen(self.comments_screen(self.selected), self.comments_closed)
 
     def comments_closed(self, choice):
         if not self.focused:  # the board was re-rendered meanwhile, so the card that had focus is gone
@@ -1292,10 +1335,10 @@ class BoardApp(App):
             return
         self.busy = True
         self.query('#toolbar Select, #toolbar Button').set(disabled=True)
-        self.status(f'Saving {issue["idReadable"]}…')
+        self.status(f'Saving {self.ref(issue)}…')
         try:
             done = await save() or done
-        except YouTrackError as exc:
+        except self.ERROR as exc:
             self.status(str(exc) + ' If the connection failed while saving, refresh before retrying.', error=True)
             return
         finally:

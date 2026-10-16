@@ -16,10 +16,10 @@ BREAK = re.compile(r'<br\s*/?>', re.IGNORECASE)
 SIZE = re.compile(r'^\{\s*(?:width|height)=[^}]*\}')  # YouTrack's image size, as in ![](a.png){width=70%}
 
 
-def fix_inline(children, first_in_item):
+def fix_inline(children, first_in_item, breaks=True, tasks=CHECKBOX):
     kept = []
     for child in children:
-        if child.type == 'softbreak':  # YouTrack shows a single newline as a line break
+        if child.type == 'softbreak' and breaks:  # YouTrack shows a single newline as a line break
             child.type = 'hardbreak'
         elif child.type == 'html_inline':
             child.type = 'hardbreak' if BREAK.fullmatch(child.content) else 'text'
@@ -32,19 +32,20 @@ def fix_inline(children, first_in_item):
             child.content = SIZE.sub('', child.content)
         elif child.type == 'text' and first_in_item and not kept:
             prefix = child.content[:4]
-            child.content = CHECKBOX[prefix] + child.content[4:] if prefix in CHECKBOX else child.content
+            child.content = tasks[prefix] + child.content[4:] if prefix in tasks else child.content
         kept.append(child)
     return kept
 
 
-def markdown(text):
-    """Text that is already free of terminal control characters, as a renderable that wraps to any width."""
+def markdown(text, breaks=True, tasks=CHECKBOX):
+    """Text that is already free of terminal control characters, as a renderable that wraps to any width.
+    breaks: a single newline breaks the line, as YouTrack shows it. tasks: the checklist markers to draw."""
     tokens = PARSER.parse(text)
     for n, token in enumerate(tokens):
         if token.type == 'html_block':
             token.type = 'code_block'  # shown as its source, in a code block
         elif token.type == 'inline' and token.children:
-            token.children = fix_inline(token.children, n >= 2 and tokens[n - 2].type == 'list_item_open')
+            token.children = fix_inline(token.children, n >= 2 and tokens[n - 2].type == 'list_item_open', breaks, tasks)
     rendered = Markdown('', hyperlinks=False)  # links print their address: "text (url)"
     rendered.parsed = tokens
     return rendered
