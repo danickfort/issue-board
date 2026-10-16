@@ -39,7 +39,8 @@ def clean_view(view):
     view = _dict(view)
     hidden = view.get('hidden') if isinstance(view.get('hidden'), list) else []
     return {'mine': view.get('mine') is True, 'compact': view.get('compact') is True,
-            'hidden': [title for title in hidden if isinstance(title, str)]}
+            'hidden': [title for title in hidden if isinstance(title, str)],
+            'auto': view.get('auto') is not False}  # auto-refresh is on until turned off for the board
 
 
 def clean(section):

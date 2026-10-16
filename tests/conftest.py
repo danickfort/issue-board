@@ -16,3 +16,9 @@ def isolated(monkeypatch, tmp_path_factory):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr('keyring.get_keyring', forbidden)
     return home
+
+
+@pytest.fixture(autouse=True)
+def no_timed_refresh(monkeypatch):
+    """A slow test must not be refreshed under its feet: tests call BoardApp.tick() themselves."""
+    monkeypatch.setattr('youtrack_board.app.BoardApp.REFRESH', 3600)

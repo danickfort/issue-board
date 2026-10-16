@@ -119,7 +119,7 @@ def main():
     target.write_text(formula(metadata['version'], args.url or archive.as_uri(), checksum, resources,
                               args.homepage or metadata.get("urls", {}).get("Homepage"), revision))
     print(f'Archive: {archive}\nSHA256: {checksum}\nFormula: {target}')
-    print('For local installation, see docs/homebrew.md. No tap or release has been published.')
+    print('For local installation, see docs/homebrew.md. Prepared artifacts only; this command does not publish.')
 
 
 if __name__ == '__main__':

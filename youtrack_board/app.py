@@ -517,6 +517,7 @@ class BacklogScreen(ModalScreen):
 
 class BoardApp(App):
     TITLE = 'YouTrack Board'
+    REFRESH = 5  # seconds between auto-refreshes of the board on screen
     AUTO_FOCUS = None
     ESCAPE_TO_MINIMIZE = False
     CSS = '''
@@ -526,7 +527,8 @@ class BoardApp(App):
     #toolbar Button { width: auto; min-width: 0; max-width: 24; padding: 0; text-style: none;
                       content-align: left middle; }
     #toolbar Button:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
-    #filter { margin-right: 0; }
+    #toolbar #auto { width: 7; margin-right: 0; }  /* fits "↻ 60s" and the padding every Button has */
+    #toolbar #auto.error { color: $text-error; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     #status.error { color: $text-error; }
     #heads { height: 1; padding: 0 1; display: none; }
@@ -580,6 +582,7 @@ class BoardApp(App):
                 Binding('x', 'clear_filters', 'Show all issues', show=False),
                 Binding('s', 'source', 'Markdown source', show=False),
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
+                Binding('R', 'auto', 'Auto-refresh', show=False),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
@@ -601,6 +604,8 @@ class BoardApp(App):
         self.sprint_memory = {}  # board id -> sprint id, for returning to a board in this session
         self.source = False  # show descriptions and comments as typed instead of formatted
         self.rendering = asyncio.Lock()
+        self.slowdown = 1  # auto-refresh runs every REFRESH × slowdown seconds; more while YouTrack does not answer
+        self.skip = 0  # timer ticks left to wait before the next try
 
     def compose(self):
         with Horizontal(id='toolbar'):
@@ -608,6 +613,7 @@ class BoardApp(App):
             yield Button('Board ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
             yield Select([], prompt='Sprint', id='sprints', compact=True)
             yield Input(placeholder='Filter by ID, summary or assignee  (/)', id='filter', compact=True)
+            yield Button('', id='auto', compact=True, action='app.auto', tooltip='Auto-refresh this board (R)')
         yield Static('Loading boards…', id='status', markup=False)
         yield Horizontal(id='heads')  # the status columns, shared by every swimlane
         yield ScrollableContainer(id='board', can_focus=False)
@@ -622,6 +628,8 @@ class BoardApp(App):
             self.notify(self.connection, title='YouTrack account', timeout=8)
         if self.prefs.warning:
             self.notify(self.prefs.warning, severity='warning')
+        self.show_auto()
+        self.set_interval(self.REFRESH, self.tick)
         self.load_boards()
 
     def status(self, text, error=False):
@@ -689,6 +697,7 @@ class BoardApp(App):
         self.board_data = self.sprint_data = None
         self.issues_data = []
         self.show_scope()
+        self.show_auto()
         await self.render_board()
         self.status('Loading board…')
         selector = self.query_one('#sprints', Select)
@@ -731,10 +740,14 @@ class BoardApp(App):
         self.people.clear()
         self.reload()
 
+    def loaded(self):
+        """A board and, if it uses sprints, a sprint are chosen, so its issues can be (re)loaded."""
+        return bool(self.board_data) and (bool(self.sprint_data) or not uses_sprints(self.board_data))
+
     def reload(self):
         if self.busy:
             return
-        if self.board_data and (self.sprint_data or not uses_sprints(self.board_data)):
+        if self.loaded():
             self.load_issues()
         elif self.board_id:
             self.load_board(self.board_id)
@@ -752,10 +765,67 @@ class BoardApp(App):
         except YouTrackError as exc:
             self.status(f'{exc} — press r to retry.', error=True)
             return
+        self.answered()
         refocus = not self.screen.is_modal and not isinstance(self.focused, Input)
         await self.render_board()
         if refocus:
             self.action_focus_board()
+
+    def may_poll(self):
+        """Auto-refresh is on for this board, and a refresh would disturb nothing: no save is running, and no dialog,
+        backlog, filter typing or expanded details is in front of the board."""
+        return self.view()['auto'] and not (self.busy or self.screen.is_modal or self.screen.maximized
+                                            or isinstance(self.focused, Input))
+
+    def tick(self):
+        """Every REFRESH seconds. One refresh at a time, never during another load, and less often while they fail."""
+        if self.skip:
+            self.skip -= 1
+        elif self.loaded() and self.may_poll() and not any(w.group == 'load' and not w.is_finished for w in self.workers):
+            self.poll()
+
+    @work(exclusive=True, group='load')
+    async def poll(self):
+        """Read the issues on screen again; rebuild the board only if they changed. Any other load cancels this one, and
+        an answer for a board or sprint no longer shown, or arriving under a dialog, is dropped."""
+        shown = self.board_data, self.sprint_data
+        try:
+            issues = await self.client.issues(*shown)
+        except YouTrackError as exc:
+            if self.slowdown == 1:  # once per outage, not on every retry
+                self.notify(f'{exc} The board keeps what it showed; retrying less often until YouTrack answers.',
+                            title='Auto-refresh failed', severity='warning', timeout=10)
+            self.slowdown = min(self.slowdown * 2, 12)  # 10, 20, 40, then 60 s
+            self.skip = self.slowdown - 1
+            self.show_auto()
+            return
+        self.answered()
+        if issues != self.issues_data and (self.board_data, self.sprint_data) == shown and self.may_poll():
+            self.issues_data = issues
+            await self.render_board()
+
+    def answered(self):
+        """YouTrack answered: auto-refresh is back to its normal pace."""
+        if self.slowdown > 1:
+            self.slowdown, self.skip = 1, 0
+            self.show_auto()
+
+    def show_auto(self):
+        """The toolbar's auto-refresh indicator for this board: its interval, red while it fails, or off."""
+        button, on = self.query_one('#auto', Button), self.view()['auto']
+        button.label = f'↻ {self.REFRESH * self.slowdown:g}s' if on else '↻ off'
+        button.set_class(on and self.slowdown > 1, 'error')
+
+    def action_auto(self):
+        if self.board_id:
+            auto = not self.view()['auto']
+            self.prefs.set_view(self.board_id, auto=auto)
+            self.save_prefs()
+            self.slowdown, self.skip = 1, 0
+            self.show_auto()
+            self.notify(f'Auto-refresh on: this board reloads every {self.REFRESH:g} s.' if auto
+                        else 'Auto-refresh off for this board. Press r to reload.')
+            self.tick()  # turned on: bring the board up to date now
 
     @on(Input.Changed, '#filter')
     async def filter_changed(self):
@@ -804,39 +874,51 @@ class BoardApp(App):
         self.status(' · '.join(parts) + HINT)
 
     async def render_board(self):
+        """Rebuild the columns. The selected card stays selected, and the board stays scrolled where it was. If the
+        focused card is gone, or focus was on an empty cell, focus stays at the same place on the board."""
         async with self.rendering:  # overlapping renders would mount two sets of columns
             wanted = self.selected and self.selected['id']
-            on_board = isinstance(self.focused, Column)
-            if on_board:  # otherwise removing the focused column moves focus into the filter
-                self.screen.set_focus(None)
             board, heads = self.query_one('#board'), self.query_one('#heads')
-            await board.remove_children()
-            await heads.remove_children()
+            before = list(self.query(Column))
+            spot = (before.index(self.focused), self.focused.index or 0) if self.focused in before else None
+            if spot:  # otherwise removing the focused column moves focus into the filter
+                self.screen.set_focus(None)
             columns = []
-            lanes = self.board_data and project_lanes(self.board_data, self.visible_issues())
-            board.set_class(lanes is not None, '-lanes')
-            heads.display = lanes is not None
-            if self.board_data:
-                view = self.view()
-                groups = group_issues(self.board_data, self.visible_issues())
-                if lanes is not None:
-                    columns = await self.render_lanes(lanes, [(t, c) for t, c in groups if t not in view['hidden']])
-                else:
-                    for title, cards in groups:
-                        if title not in view['hidden']:
-                            columns.append(Column(*(Card(i, view['compact']) for i in cards)))
-                            columns[-1].border_title = f'{title} · {len(cards)}'
-                    await board.mount_all(columns)
-                if groups and not any(t not in view['hidden'] for t, _ in groups):
-                    await board.mount(Static('All columns are hidden. Press v to choose columns.', classes='empty'))
-                self.fit_columns()
-                self.follow_board(board.scroll_x)
-                self.show_counts()
+            with self.batch_update():  # never paint it half rebuilt; an empty board would also lose its scroll position
+                await board.remove_children()
+                await heads.remove_children()
+                lanes = self.board_data and project_lanes(self.board_data, self.visible_issues())
+                board.set_class(lanes is not None, '-lanes')
+                heads.display = lanes is not None
+                if self.board_data:
+                    view = self.view()
+                    groups = group_issues(self.board_data, self.visible_issues())
+                    if lanes is not None:
+                        columns = await self.render_lanes(lanes, [(t, c) for t, c in groups if t not in view['hidden']])
+                    else:
+                        for title, cards in groups:
+                            if title not in view['hidden']:
+                                columns.append(Column(*(Card(i, view['compact']) for i in cards)))
+                                columns[-1].border_title = f'{title} · {len(cards)}'
+                        await board.mount_all(columns)
+                    if groups and not any(t not in view['hidden'] for t, _ in groups):
+                        await board.mount(Static('All columns are hidden. Press v to choose columns.', classes='empty'))
+                    self.fit_columns()
+                    self.follow_board(board.scroll_x)
+                    self.show_counts()
             found = next(((c, n) for c in columns for n, card in enumerate(c.children) if card.issue['id'] == wanted), None)
-            if found:
-                found[0].index = found[1]
-            self.show_card(found and found[0].children[found[1]])
-            if on_board:
+            column, index = found or (None, None)
+            if spot and not found and columns:  # the card left, or focus was on an empty cell: stay at the same place
+                column = columns[min(spot[0], len(columns) - 1)]
+                index = min(spot[1], len(column) - 1) if len(column) else None
+                if index is None and wanted:  # its column emptied: on to the first card, as when a filter hides it
+                    column = None
+            if index is not None:
+                column.index = index
+            self.show_card(column.highlighted_child if column is not None else None)
+            if spot and column is not None:
+                column.focus()
+            elif spot:
                 self.action_focus_board()
 
     async def render_lanes(self, lanes, groups):

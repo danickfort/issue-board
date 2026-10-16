@@ -282,15 +282,16 @@ def test_prefs_keep_other_servers_write_atomically_and_survive_bad_files(tmp_pat
     prefs.save()
     saved = json.loads(path.read_text())
     assert saved['https://other'] == {'project': 'keep'}
-    assert saved['https://a']['views']['b1'] == {'mine': False, 'compact': True, 'hidden': []}
+    assert saved['https://a']['views']['b1'] == {'mine': False, 'compact': True, 'hidden': [], 'auto': True}
     assert Prefs(str(path), 'https://a').data == prefs.data
     assert [p.name for p in tmp_path.iterdir()] == ['state.json']  # no temp files left behind
 
-    path.write_text(json.dumps({'https://a': {'visited': {'x': 'yesterday', 'y': 5}, 'project': 3,
-                                              'views': {'b': {'mine': 'yes', 'hidden': ['Done', 7]}, 'c': []}}}))
-    assert Prefs(str(path), 'https://a').data == {'visited': {'y': 5}, 'project': None,
-                                                  'views': {'b': {'mine': False, 'compact': False, 'hidden': ['Done']},
-                                                            'c': {'mine': False, 'compact': False, 'hidden': []}}}
+    path.write_text(json.dumps({'https://a': {'visited': {'x': 'yesterday', 'y': 5}, 'project': 3, 'views': {
+        'b': {'mine': 'yes', 'hidden': ['Done', 7], 'auto': 'no'}, 'c': [], 'd': {'auto': False}}}}))
+    assert Prefs(str(path), 'https://a').data == {'visited': {'y': 5}, 'project': None, 'views': {
+        'b': {'mine': False, 'compact': False, 'hidden': ['Done'], 'auto': True},  # only an explicit false turns it off
+        'c': {'mine': False, 'compact': False, 'hidden': [], 'auto': True},
+        'd': {'mine': False, 'compact': False, 'hidden': [], 'auto': False}}}
     path.write_text('{not json')
     broken = Prefs(str(path), 'https://a')
     assert broken.warning and broken.data['visited'] == {}
@@ -381,7 +382,7 @@ async def test_view_options_apply_live_per_board_and_persist(tmp_path):
         assert {names(c.issue, 'Assignee') for c in app.query(Card)} == {'Alex Morgan'}
         assert 'assigned to me' in str(app.query_one('#status', Static).content)
         saved = json.loads(open(path).read())[client.base_url]['views']
-        assert saved == {'product': {'mine': True, 'compact': True, 'hidden': ['Done']}}
+        assert saved == {'product': {'mine': True, 'compact': True, 'hidden': ['Done'], 'auto': True}}
         await pilot.press('b', *'support', 'enter')  # other boards keep their own view
         await settle(app, pilot)
         assert len(app.query(Column)) == 3 and not app.query('Card.-compact')
@@ -1152,3 +1153,280 @@ async def test_backlog_rows_fit_small_terminals():
             assert listing.region.contains_region(meta.region)
         assert app.screen.query_one('#details-pane').region.height >= 4
         assert app.screen.query_one('Footer').region.bottom == 20
+
+
+async def refreshed(app, pilot):
+    """One tick of the auto-refresh timer, and its answer."""
+    app.tick()
+    await settle(app, pilot)
+
+
+def summaries(app):
+    return {card.issue['idReadable']: card.issue['summary'] for card in app.query(Card)}
+
+
+async def test_auto_refresh_shows_changes_keeps_the_view_and_leaves_an_unchanged_board_alone():
+    client = DemoClient()
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('p', *'demo', 'enter', 's', 'right', 'j')  # DEMO only, Markdown source, DEMO-4
+        await settle(app, pilot)
+        assert app.selected['idReadable'] == 'DEMO-4'
+        columns = list(app.query(Column))
+        await refreshed(app, pilot)
+        assert list(app.query(Column)) == columns  # nothing changed in YouTrack, so nothing was rebuilt
+        client.data[2]['customFields'][0]['value'] = {'name': 'Done'}  # someone else finishes DEMO-3
+        client.data[3]['description'] = 'Needs **retries**'  # and edits DEMO-4
+        await refreshed(app, pilot)
+        assert [c.issue['idReadable'] for c in app.query(Column)[2].children] == ['DEMO-3', 'DEMO-5']
+        assert app.selected['idReadable'] == 'DEMO-4' and app.focused is app.query(Column)[1]
+        assert app.focused.highlighted_child.issue is app.selected
+        assert 'Needs **retries**' in rendered(app.query_one('#details', Static).content)  # still the source
+        assert {c.issue['project']['shortName'] for c in app.query(Card)} == {'DEMO'}
+        assert 'DEMO only' in str(app.query_one('#status', Static).content)
+
+
+async def test_auto_refresh_keeps_the_swimlane_scroll_and_the_focused_cell():
+    client = DemoClient()
+    app = BoardApp(client)
+    async with app.run_test(size=(60, 20)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('b', *'services', 'enter')
+        await settle(app, pilot)
+        await pilot.press('right', 'right', 'down', 'down', 'down')  # the empty Done cell of the last lane
+        await settle(app, pilot)
+        board, cell = app.query_one('#board'), app.focused
+        scroll, place = board.scroll_offset, (lanes(app)[-1], list(cell.parent.children).index(cell))
+        assert scroll.x > 0 and scroll.y > 0 and app.selected is None and place == ('Uncategorized', 2)
+        client.data[11]['customFields'][0]['value'] = {'name': 'Done'}  # MOB-1, in the first lane, is done
+        await refreshed(app, pilot)
+        assert cell_of(app, 'MOB-1') == ('MOB', 2)
+        cell = app.focused
+        assert (lanes(app)[-1], list(cell.parent.children).index(cell)) == place and app.selected is None
+        assert board.scroll_offset == scroll
+        await pilot.press('up')  # DEMO-5
+        board.scroll_to(y=board.scroll_y - 2, animate=False, immediate=True)  # as the mouse wheel would
+        await settle(app, pilot)
+        scroll = board.scroll_offset
+        assert board.region.contains_region(app.focused.highlighted_child.region)
+        client.data[11]['summary'] = 'Offline tickets'
+        await refreshed(app, pilot)
+        assert board.scroll_offset == scroll and summaries(app)['MOB-1'] == 'Offline tickets'
+        client.data[4]['customFields'][0]['value'] = {'name': 'Open'}  # reopened elsewhere: the selection follows it
+        await refreshed(app, pilot)
+        assert app.selected['idReadable'] == 'DEMO-5' and cell_of(app, 'DEMO-5') == ('DEMO', 0)
+        assert app.focused.highlighted_child.issue is app.selected
+        assert board.region.contains_region(app.focused.highlighted_child.region)
+
+
+async def test_auto_refresh_toggles_per_board_and_is_remembered(tmp_path):
+    class Counting(DemoClient):
+        calls = 0
+
+        async def issues(self, board, sprint):
+            self.calls += 1
+            return await super().issues(board, sprint)
+
+    path = str(tmp_path / 'state.json')
+    client = Counting()
+    app = BoardApp(client, Prefs(path, client.base_url))
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        auto = app.query_one('#auto')
+        assert str(auto.label) == f'↻ {app.REFRESH}s' and app.view()['auto']  # on by default
+        await pilot.press('R')
+        assert str(auto.label) == '↻ off'
+        assert json.loads(open(path).read())[client.base_url]['views']['product']['auto'] is False
+        client.data[0]['summary'] = 'Renamed in YouTrack'
+        calls = client.calls
+        await refreshed(app, pilot)
+        assert client.calls == calls and summaries(app)['DEMO-1'] == 'Keyboard navigation for the board'
+        await pilot.press('r')  # reloading by hand still works
+        await settle(app, pilot)
+        assert summaries(app)['DEMO-1'] == 'Renamed in YouTrack'
+        await pilot.press('b', *'support', 'enter')  # each board has its own setting
+        await settle(app, pilot)
+        assert str(auto.label) == f'↻ {app.REFRESH}s'
+        await pilot.press('b', 'enter')
+        await settle(app, pilot)
+        assert app.board_id == 'product' and str(auto.label) == '↻ off'
+
+    app = BoardApp(client, Prefs(path, client.base_url))
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        auto = app.query_one('#auto')
+        assert app.board_id == 'product' and str(auto.label) == '↻ off'
+        client.data[0]['summary'] = 'Renamed again'
+        calls = client.calls
+        await pilot.press('R')  # turning it on brings the board up to date at once
+        await settle(app, pilot)
+        assert str(auto.label) == f'↻ {app.REFRESH}s' and client.calls == calls + 1
+        assert summaries(app)['DEMO-1'] == 'Renamed again'
+
+
+async def test_auto_refresh_waits_for_dialogs_the_backlog_typing_details_and_saves():
+    class Watched(DemoClient):
+        calls, saving = 0, asyncio.Event()
+
+        async def issues(self, board, sprint):
+            self.calls += 1
+            return await super().issues(board, sprint)
+
+        async def move(self, issue, field_name, value):
+            await self.saving.wait()
+            await super().move(issue, field_name, value)
+
+    client = Watched()
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        # The move dialog, comments, the backlog, the view dialog, typing a filter, then expanded details.
+        for key in ('m', 'C', 'B', 'v', 'slash', 'enter'):
+            await pilot.press(key)
+            await settle(app, pilot)
+            calls = client.calls
+            await refreshed(app, pilot)
+            assert client.calls == calls, key
+            await pilot.press('escape')
+            await settle(app, pilot)
+        assert isinstance(app.focused, Column) and app.screen.maximized is None
+        calls = client.calls
+        await refreshed(app, pilot)
+        assert client.calls == calls + 1  # back on the board, it refreshes again
+        await pilot.press('m', 'enter')  # a save that YouTrack has not answered yet
+        await pilot.pause()
+        assert app.busy
+        app.tick()
+        await pilot.pause()
+        assert client.calls == calls + 1
+        client.saving.set()
+        await settle(app, pilot)
+        assert state(client, '1') == 'In Progress' and client.calls == calls + 2  # the save's own reload
+
+
+async def test_auto_refresh_runs_one_at_a_time_and_drops_answers_meant_for_another_view():
+    class Held(DemoClient):
+        calls, hold = 0, None
+
+        async def sprints(self, board_id):
+            return [*await super().sprints(board_id), {'id': f'{board_id}-2', 'name': 'Sprint 02', 'archived': False}]
+
+        async def issues(self, board, sprint):
+            self.calls += 1
+            if self.hold:
+                await self.hold.wait()
+            return [] if sprint and sprint['name'] == 'Sprint 02' else await super().issues(board, sprint)
+
+    client = Held()
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        client.data[0]['summary'] = 'Renamed in YouTrack'
+        held = client.hold = asyncio.Event()
+        calls = client.calls
+        app.tick()
+        await pilot.pause()
+        app.tick()  # the first answer is still on its way: no second request
+        await pilot.pause()
+        assert client.calls == calls + 1
+        await pilot.press('v')  # a dialog opens before the answer arrives
+        client.hold = None
+        held.set()
+        await settle(app, pilot)
+        assert summaries(app)['DEMO-1'] == 'Keyboard navigation for the board'  # not rebuilt under the dialog
+        await pilot.press('escape')
+        await refreshed(app, pilot)
+        assert summaries(app)['DEMO-1'] == 'Renamed in YouTrack'
+
+        held = client.hold = asyncio.Event()
+        app.tick()
+        await pilot.pause()
+        client.hold = None
+        app.query_one('#sprints', Select).value = 'product-2'  # another sprint while Sprint 01's answer is on its way
+        await settle(app, pilot)
+        held.set()
+        await settle(app, pilot)
+        assert app.sprint_data['name'] == 'Sprint 02' and not app.query(Card)
+
+        held = client.hold = asyncio.Event()
+        app.tick()
+        await pilot.pause()
+        client.hold = None
+        await pilot.press('b', *'support', 'enter')  # another board while Sprint 02's answer is on its way
+        await settle(app, pilot)
+        held.set()
+        await settle(app, pilot)
+        assert app.board_id == 'ops' and {c.issue['project']['shortName'] for c in app.query(Card)} == {'OPS'}
+
+
+async def test_auto_refresh_failures_keep_the_board_slow_down_and_warn_once(monkeypatch):
+    class Flaky(DemoClient):
+        calls, down = 0, False
+
+        async def issues(self, board, sprint):
+            self.calls += 1
+            if self.down:
+                raise YouTrackError('Cannot reach YouTrack. Check the URL and connection.')
+            return await super().issues(board, sprint)
+
+    client = Flaky()
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('right', 'j')  # DEMO-4
+        notes = []
+        monkeypatch.setattr(app, 'notify', lambda message, **options: notes.append((options.get('title'), message)))
+        cards, auto, status = summaries(app), app.query_one('#auto'), app.query_one('#status', Static)
+        client.down = True
+        client.data[0]['summary'] = 'Renamed while unreachable'
+        tries = []
+        for _ in range(12):
+            calls = client.calls
+            await refreshed(app, pilot)
+            tries.append(client.calls - calls)
+        assert tries == [1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0]  # after REFRESH, then 2×, 4×, 8× (at most 12×) apart
+        assert summaries(app) == cards and app.selected['idReadable'] == 'DEMO-4'  # the board stays as it was
+        assert auto.has_class('error') and str(auto.label) == f'↻ {app.REFRESH * 8}s'
+        assert not status.has_class('error')
+        assert [title for title, _ in notes] == ['Auto-refresh failed'] and 'Cannot reach YouTrack' in notes[0][1]
+        client.down = False
+        await pilot.press('r')  # a reload by hand that works ends the slowdown
+        await settle(app, pilot)
+        assert not auto.has_class('error') and str(auto.label) == f'↻ {app.REFRESH}s'
+        assert summaries(app)['DEMO-1'] == 'Renamed while unreachable' and app.selected['idReadable'] == 'DEMO-4'
+        calls = client.calls
+        await refreshed(app, pilot)
+        assert client.calls == calls + 1 and len(notes) == 1
+
+
+async def test_auto_refresh_runs_on_its_own_timer(monkeypatch):
+    monkeypatch.setattr(BoardApp, 'REFRESH', 0.05)
+    client = DemoClient()
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        client.data[0]['summary'] = 'Renamed in YouTrack'
+        await pilot.pause(0.3)
+        await settle(app, pilot)
+        assert summaries(app)['DEMO-1'] == 'Renamed in YouTrack' and app.selected['idReadable'] == 'DEMO-1'
+
+
+async def test_auto_refresh_indicator_fits_the_toolbar(monkeypatch):
+    monkeypatch.setattr(BoardApp, 'REFRESH', 5)  # the labels people see; this test ends long before a tick
+    app = BoardApp(DemoClient())
+    async with app.run_test(size=(60, 20)) as pilot:
+        await settle(app, pilot)
+        auto, shown = app.query_one('#auto'), []
+        for step in ('on', 'slowest', 'off'):
+            if step == 'slowest':
+                app.slowdown = 12
+                app.show_auto()
+            if step == 'off':
+                await pilot.press('R')
+            await pilot.pause()
+            shown.append(str(auto.label))
+            assert auto.region.height == 1 and app.query_one('#toolbar').region.contains_region(auto.region), step
+        assert shown == ['↻ 5s', '↻ 60s', '↻ off']
+        await pilot.click('#auto')  # the indicator is also a button
+        assert str(auto.label) == '↻ 5s' and app.view()['auto']
