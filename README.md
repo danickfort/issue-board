@@ -32,21 +32,24 @@ brew uninstall youtrack-board
 
 Uninstalling preserves your preferences and credentials. Run `youtrack-board --logout` before uninstalling to also remove the app's saved token. Existing MCP credentials are never changed. [Homebrew release and development instructions](docs/homebrew.md).
 
-## Try it
+## Try the demo
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+After installing with Homebrew, run:
 
 ```sh
-uv sync
-uv run youtrack-board --demo
+youtrack-board --demo
 ```
+
+No YouTrack account or credentials are needed. To run from a source checkout instead, see [Development](#development).
 
 The demo includes multiple projects and boards. *Services desk* demonstrates project swimlanes, grouped status columns, and a board with sprints disabled. WEB's State follows a workflow, so its cards offer workflow transitions; *start* is refused for unassigned cards, as a workflow condition would. *Product team* spans DEMO and WEB, and the demo starts as if you had opened *Product team* five minutes ago and *Support kanban* yesterday. *Connect to YouTrack* (DEMO-3) has a comment thread to read with `C`, including one restricted to a group. Press `B` for a board's backlog: *Product team*'s has 123 issues to page through, *Support kanban*'s a few, *Services desk*'s is empty and *Website launch* has none. Demo changes, visits and view settings stay in memory and disappear on exit. The demo never contacts YouTrack, never looks for credentials, and never reads or writes your saved state.
 
 ## Connect to YouTrack
 
+After installing with Homebrew, start the app:
+
 ```sh
-uv run youtrack-board
+youtrack-board
 ```
 
 The app looks for credentials in the places below. If none work, it guides you through the instance URL, token creation, and verification in the terminal. It asks for your instance's base URL (including any context path, for example `https://example.org/youtrack`) and a permanent token, with typing hidden. It checks them with a read-only sign-in (`GET /api/users/me`) and saves them. Setup never changes anything in YouTrack.
@@ -88,7 +91,7 @@ To use a token for one session without saving it, set both variables (the `read`
 ```sh
 export YOUTRACK_URL='https://your-instance.youtrack.cloud'
 read -s 'YOUTRACK_TOKEN?YouTrack token: '; export YOUTRACK_TOKEN
-uv run youtrack-board
+youtrack-board
 ```
 
 ## Controls
@@ -203,9 +206,17 @@ It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devporta
 
 ## Development
 
+This section is for running or changing the source code. Homebrew users can skip it. A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+
+From the repository directory:
+
 ```sh
 uv sync
+uv run youtrack-board --demo  # Try the demo from source
+uv run youtrack-board         # Connect to YouTrack from source
 uv run pytest -q
 ```
+
+For the other commands above, prefix `youtrack-board` with `uv run` when running from source.
 
 Tests drive the actual TUI in headless mode: keyboard navigation, moving a demo card, commenting, reading comments (order, visibility, literal markup, control characters, errors and retry, empty threads, late answers), filtering, keeping the selection across refreshes, overlapping renders, 80×24 and 60×20 layouts, and retrying after a load error. New in this version: assigning (who is listed, ordering, unassigning, multi-user and permission errors), board recency and resume, project scope without reloads, discarding a slower board response, and live, per-board view options. Saved state is checked for keeping other servers' data, atomic writes, invalid and corrupt files, and demo isolation. Credential tests replace the credential store, the prompts and YouTrack with fakes, and never read your real keychain, MCP files or environment. They cover the source order, environment-only starts, incomplete environment pairs, URL and token pairs that are never mixed, MCP discovery limits, setup success, rejection, the three-try limit and cancelling, refused plaintext and locked stores, rejected saved tokens, choosing between several entries, logout, private config files, tokens absent from output, and `--demo` and `--help` that never look for credentials. Mocked API tests check the assignee requests, pagination and payloads. Backlog tests cover the saved-search source and order, paging, the refusal to load a query-less search, missing, empty and forbidden backlogs with retry, local search, details, read-only comments, inert board keys, late and overlapping pages, the board state after returning, and 60×20 rows. No live instance is required. Live-server compatibility and workflow behavior still need checking against your instance.
