@@ -1,6 +1,6 @@
 # GitLab issue board in the terminal: findings and design
 
-Status: implemented in `gitlab_board/`, runnable from a source checkout (`uv run python -m gitlab_board`); not in the Homebrew release. Researched and checked on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), glab 1.115.0, GitLab's source at `master` (commit `bf8b7997dc96fe5912d8224b4a16d61e674fdf1a`), and the example board, read-only. User guide: [docs/gitlab-board.md](../gitlab-board.md).
+Status: released separately as [GitLab Board 0.1.0](https://github.com/krabilousse/gitlab-board/releases/tag/v0.1.0), installable from the private `krabilousse/gitlab` Homebrew tap. Researched and checked on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), glab 1.115.0, GitLab's source at `master` (commit `bf8b7997dc96fe5912d8224b4a16d61e674fdf1a`), and the example board, read-only. User guide: [docs/gitlab-board.md](../gitlab-board.md).
 
 ## Summary
 
@@ -292,7 +292,7 @@ The app renders with markdown-it's CommonMark parser, plus strikethrough and tab
 2. Add or remove one assignee on Premium (`APPEND`, `REMOVE`), with a tier check.
 3. Load more than 100 cards per list on the board on demand, and per-epic lane queries like the web page.
 4. Lighter refresh: leave out descriptions and fetch the selected issue's description on demand.
-5. A Homebrew formula for `gitlab-board`. The console script and the full package are in the built wheel and sdist; shipping them through Homebrew is a release decision.
+5. Binary Homebrew bottles and Linux distribution. The macOS source formula is published and tested.
 6. Internal note writing, and threaded comments through the discussions API.
 7. Close or reopen without a list move, label editing, and creating an issue in a list.
 8. Epic boards (`group.epicBoards`).

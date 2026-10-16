@@ -1,6 +1,6 @@
 # Open merge requests linked to a story
 
-Status: implemented in both boards. YouTrack MR support ships in 0.1.2; GitLab Board remains source-only. The findings and design below were written before the code; results are at the end. Stage 1 is the GitLab board, stage 2 the YouTrack board. Researched on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), gitlab.liip.ch 19.4.2 (Community Edition), glab 1.115.0, GitLab's source at `master` commit `042d7c216cf9dee29ab0cd7a26804009e995b21e`, and track.liip.ch. Every live check was a GraphQL query or a REST GET.
+Status: implemented in both boards. YouTrack MR support ships in 0.1.2; GitLab Board ships separately as 0.1.0. The findings and design below were written before the code; results are at the end. Stage 1 is the GitLab board, stage 2 the YouTrack board. Researched on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), gitlab.liip.ch 19.4.2 (Community Edition), glab 1.115.0, GitLab's source at `master` commit `042d7c216cf9dee29ab0cd7a26804009e995b21e`, and track.liip.ch. Every live check was a GraphQL query or a REST GET.
 
 ## What the user asked for
 
@@ -68,7 +68,7 @@ Coverage limits, stated in the panel and the guide: only the mapped project; onl
 
 **YouTrack.** `BoardApp.action_merge_requests`: no mapping → check glab (skipped in the demo) → the GitLab project of the checkout the board started in, if exactly one and not linked to another project (`find_repository`, see [the startup findings](../research/gitlab-board.md#starting-in-a-code-checkout-and-the-default-board)), else a choice or the URL dialog → panel that validates, saves and loads. With a mapping → panel. `u` in the panel asks for another URL, prefilled; nothing is saved until GitLab confirms the project. YouTrack imports the GitLab modules only when `g` is pressed.
 
-**Packaging.** The wheel and sdist currently hold only `youtrack_board`. Stage 2 adds the GitLab modules the YouTrack board imports (`__init__`, `glab`, `client`, `target`, `demo`, `merge_requests`) and not `gitlab_board/app.py` or `__main__.py`, so no GitLab command is installed or advertised. Verified by building the wheel and importing from a temporary environment outside the checkout. The version stays 0.1.1 and nothing is published.
+**Packaging.** YouTrack Board 0.1.2 includes the shared GitLab modules needed by its MR panel and installs only `youtrack-board`. The separate GitLab Board 0.1.0 distribution includes both module directories for shared layout code, but installs only `gitlab-board`. The original stage-2 verification below describes the YouTrack package before the separate GitLab release.
 
 ## Order of work
 
