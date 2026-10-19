@@ -12,6 +12,9 @@ import re
 import subprocess
 import sys
 
+from rich.text import Text
+from textual.app import App
+
 from gitlab_board import app as gitlab_app
 from gitlab_board import glab, remotes, target
 from gitlab_board.client import Client as GitLab
@@ -118,7 +121,35 @@ def ask(prompt):
         raise Cancelled('Setup cancelled. Nothing was saved for this folder.') from None
 
 
+class SetupPicker(App):
+    CSS = """
+    Screen { background: $surface; }
+    ModalScreen { align: center middle; }
+    #dialog { width: 80; max-width: 96%; height: auto; max-height: 96%; border: round $border;
+              background: $surface; padding: 0 1; }
+    #dialog Label { margin: 1 0; text-style: bold; }
+    #dialog OptionList { height: auto; max-height: 50vh; margin-top: 1; padding: 0; border: none; }
+    .hint { margin: 1 0; color: $text-muted; }
+    """
+
+    def __init__(self, title, options, default=None):
+        super().__init__()
+        self.title, self.options, self.default = title, options, default
+
+    def on_mount(self):
+        choices = [(n, Text(youtrack_app.plain(label)), youtrack_app.plain(label), False)
+                   for n, (_, label) in enumerate(self.options)]
+        self.push_screen(youtrack_app.Picker(self.title, choices, self.default, fuzzy=True), self.exit)
+
+
 def pick(title, options, default=None):
+    index = SetupPicker(title, options, default).run()
+    if index is None:
+        raise Cancelled('Setup cancelled. Nothing was saved for this folder.')
+    return options[index][0]
+
+
+def pick_tracker(title, options, default=None):
     """The value of one of the (value, label) options, by number; Enter takes the default, if there is one."""
     print(title)
     for n, (_, label) in enumerate(options, 1):
@@ -140,7 +171,7 @@ def choose_backend(folder, cwd, current):
         print('  · The clues point both ways, so nothing is suggested.')
     default = current or (pointing[0] if len(pointing) == 1 else None)
     options = list(BACKENDS.items())
-    return pick('Issue tracker:', options, [k for k, _ in options].index(default) if default else None), found
+    return pick_tracker('Issue tracker:', options, [k for k, _ in options].index(default) if default else None), found
 
 
 def youtrack_boards(account):

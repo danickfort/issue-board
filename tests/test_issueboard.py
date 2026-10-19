@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from textual.widgets import Input, OptionList
 from test_gitlab import settle
 from test_startup import HOST, checkout, git, signed_in
 
@@ -51,6 +52,9 @@ def terminal(monkeypatch, *answers):
             raise given
         return given
     monkeypatch.setattr('builtins.input', answer)
+    # Workflow tests supply selections; the real searchable UI is driven separately below.
+    monkeypatch.setattr(issueboard.SetupPicker, 'run', lambda self: issueboard.pick_tracker(
+        self.title, [(n, label) for n, (_, label) in enumerate(self.options)], self.default))
     return asked
 
 
@@ -195,3 +199,59 @@ def test_both_demos_start_offline(monkeypatch, run):
     main(['--demo', 'youtrack'])
     main(['--demo', 'gitlab'])
     assert [type(app).__name__ for app in run] == ['BoardApp', 'GitLabApp'] and saved() is None
+
+
+@pytest.mark.parametrize('size', [(100, 30), (60, 20)])
+async def test_setup_fuzzy_search_ranks_matches_navigates_and_selects_original_value(size):
+    options = [(n, f'Unrelated project {n}') for n in range(200)]
+    options += [('portal', 'Customer Portal'), ('team', 'Product team'), ('support', 'Product support team')]
+    app = issueboard.SetupPicker('YouTrack project:', options, default=0)
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        search = app.screen.query_one(Input)
+        assert search.has_focus
+        await pilot.press('p', 'r', 'd', 't', 'm')  # noncontiguous, case-insensitive
+        await pilot.pause()
+        picker = app.screen
+        assert [c[0] for c in picker.shown] == [201, 202]
+        assert picker.query_one(OptionList).highlighted == 0  # the best match, not the original default
+        assert picker.query_one('#dialog').region.width <= size[0]
+        assert picker.query_one('#dialog').region.height <= size[1]
+        await pilot.press('down', 'enter')
+    assert app.return_value == 202
+    assert options[app.return_value][0] == 'support'
+
+
+async def test_setup_no_matches_cannot_submit_and_clearing_restores_default():
+    app = issueboard.SetupPicker('YouTrack project:', [(None, 'All projects'), ('web', 'Website')], default=0)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press('z', 'z', 'z', 'enter')
+        await pilot.pause()
+        assert not app.screen.shown
+        assert app.screen.query_one(OptionList).get_option_at_index(0).disabled
+        assert app.return_value is None and app.is_running
+        await pilot.press('ctrl+u', 'enter')
+    assert app.return_value == 0  # All projects is a valid selection, distinct from cancellation
+
+
+async def test_setup_escape_cancels_and_labels_are_literal():
+    app = issueboard.SetupPicker('GitLab board:', [(7, '[red]Release[/red]'), (8, '[red]Release[/red]')])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.screen.query_one(OptionList).get_option_at_index(0).prompt.plain == '[red]Release[/red]'
+        await pilot.press('escape')
+    assert app.return_value is None
+
+
+def test_cancelled_search_does_not_replace_the_saved_folder_choice(tmp_path, monkeypatch, run):
+    monkeypatch.chdir(tmp_path)
+    folder = str(tmp_path.resolve())
+    before = {'backend': 'gitlab', 'board': f'https://{HOST}/demo/portal/-/boards/1'}
+    write_json(issueboard.config_path(), {'directories': {folder: before}})
+    terminal(monkeypatch, '1')
+    youtrack_signed_in(monkeypatch)
+    monkeypatch.setattr(issueboard.SetupPicker, 'run', lambda self: None)
+    with pytest.raises(SystemExit, match='cancelled'):
+        main(['--setup'])
+    assert saved() == {folder: before} and not run

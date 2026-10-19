@@ -16,6 +16,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical, VerticalScroll
 from textual.content import Content
+from textual.fuzzy import Matcher
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Input, Label, ListItem, ListView, OptionList, Select, SelectionList, Static
 from textual.widgets.option_list import Option
@@ -97,11 +98,13 @@ class Picker(ModalScreen):
                 Binding('down', 'cursor("cursor_down")', show=False), Binding('up', 'cursor("cursor_up")', show=False),
                 Binding('pagedown', 'cursor("page_down")', show=False), Binding('pageup', 'cursor("page_up")', show=False)]
 
-    def __init__(self, title, choices=None, value=None):
+    def __init__(self, title, choices=None, value=None, *, fuzzy=False):
         """Each choice is (value, label, search text or None to always show it, disabled). None means still loading."""
         super().__init__()
         self.prompt, self.choices, self.value, self.shown = title, choices, value, []
-        self.placeholder, self.error = 'Loading…' if choices is None else 'Type to search', None
+        self.fuzzy = fuzzy
+        self.placeholder, self.error = ('Loading…' if choices is None else
+                                        'Type to fuzzy search' if fuzzy else 'Type to search'), None
 
     def compose(self) -> ComposeResult:
         with Vertical(id='dialog'):
@@ -136,14 +139,21 @@ class Picker(ModalScreen):
 
     @on(Input.Changed)
     def show(self):
-        words = self.query_one(Input).value.casefold().split()
-        self.shown = [c for c in self.choices or [] if c[2] is None or all(w in c[2] for w in words)]
+        query = self.query_one(Input).value.strip()
+        if self.fuzzy and query:
+            matcher = Matcher(query)
+            matches = [(1 if c[2] is None else matcher.match(c[2]), c) for c in self.choices or []]
+            self.shown = [c for score, c in sorted(matches, key=lambda item: item[0], reverse=True) if score > 0]
+        else:
+            words = query.casefold().split()
+            self.shown = [c for c in self.choices or [] if c[2] is None or all(w in c[2] for w in words)]
         options = self.query_one(OptionList)
         options.set_options(Option(label, disabled=disabled) for _, label, _, disabled in self.shown)
         if self.choices is not None and not self.shown:
             options.add_option(Option(Text('No matches', 'dim'), disabled=True))
         enabled = [n for n, choice in enumerate(self.shown) if not choice[3]]
-        options.highlighted = next((n for n in enabled if self.shown[n][0] == self.value), enabled[0] if enabled else None)
+        options.highlighted = next((n for n in enabled if self.shown[n][0] == self.value and not (self.fuzzy and query)),
+                                   enabled[0] if enabled else None)
 
     @on(Input.Submitted)
     def submit(self):
