@@ -101,19 +101,24 @@ def test_gitlab_hosting_alone_suggests_nothing_and_saved_links_do(tmp_path):
     write_json(default_path('youtrack-board'), {})
     assert evidence(repo)[0] == ['gitlab']
     git('-C', repo, 'checkout', '-q', '-b', 'feature/WEB-12-login')
-    assert evidence(repo)[0] == ['youtrack', 'gitlab']
+    pointing, why, _ = evidence(repo)
+    assert pointing == ['gitlab'] and 'YouTrack and Jira both write them' in why[1]  # a key alone is no clue
+    jira = {'backend': 'jira', 'url': 'https://example.atlassian.net', 'project': 'WEB', 'board': '1'}
+    assert evidence(repo, {'/other/worktree': jira})[0] == ['gitlab', 'jira']
+    assert evidence(repo, {'/other/worktree': {**jira, 'project': 'OPS'}})[0] == ['gitlab']
 
 
-def test_first_start_asks_suggests_sets_up_youtrack_saves_and_reopens_without_asking(tmp_path, monkeypatch, run, capsys):
+def test_first_start_asks_sets_up_youtrack_saves_and_reopens_without_asking(tmp_path, monkeypatch, run, capsys):
     repo = checkout(tmp_path / 'code', ('origin', f'git@{HOST}:demo/portal.git'))
     git('-C', repo, 'checkout', '-q', '-b', 'DEMO-3-connect')
     (repo / 'src').mkdir()
     monkeypatch.chdir(repo / 'src')
     youtrack_signed_in(monkeypatch)
-    terminal(monkeypatch, '', '2', '1')  # the suggestion, then project DEMO, then its first board
+    asked = terminal(monkeypatch, '1', '2', '1')  # YouTrack, then project DEMO, then its first board
     main([])
     out = capsys.readouterr().out
-    assert 'DEMO-3, like a YouTrack issue ID' in out and '1. YouTrack  (suggested)' in out
+    assert 'DEMO-3, an issue key as YouTrack and Jira both write them' in out and '1. YouTrack\n' in out
+    assert asked[0] == 'Choose 1-3: '
     folder = str(repo.resolve())
     assert saved() == {folder: {'backend': 'youtrack', 'url': YouTrackDemo.base_url, 'project': '0-1',
                                 'board': 'product', 'name': 'Product team'}}
@@ -169,7 +174,7 @@ def test_without_a_terminal_nothing_is_asked_and_the_way_out_is_named(tmp_path, 
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: False)
     monkeypatch.setattr('builtins.input', lambda *_: pytest.fail('asked without a terminal'))
     for argv in ([], ['--setup']):
-        with pytest.raises(SystemExit, match='interactive terminal.*youtrack-board or gitlab-board'):
+        with pytest.raises(SystemExit, match='interactive terminal.*youtrack-board, gitlab-board or jira-board'):
             main(argv)
     assert saved() is None and not run
 

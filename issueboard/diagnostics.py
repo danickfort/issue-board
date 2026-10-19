@@ -10,7 +10,8 @@ LOGGER = logging.getLogger('board')
 LOGGER.setLevel(logging.DEBUG)
 LOGGER.propagate = False
 LOGGER.addHandler(logging.NullHandler())
-SECRET = re.compile(r'gl[a-z]{2,12}-[A-Za-z0-9_.\-]{16,}|(?i:bearer|private-token:?)\s+\S+')
+SECRET = re.compile(r'gl[a-z]{2,12}-[A-Za-z0-9_.\-]{16,}|(?i:bearer|private-token:?)\s+\S+|(?i:basic)\s+[A-Za-z0-9+/]{16,}={0,2}'
+                    r'|ATATT[A-Za-z0-9_\-=]{20,}')  # GitLab and Atlassian tokens, Authorization values
 
 
 class LogBuffer(logging.Handler):

@@ -1,7 +1,7 @@
 [project]
 name = "issueboard"
-version = "0.2.3"
-description = "A keyboard-driven terminal issue board for YouTrack and GitLab"
+version = "0.3.0"
+description = "A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -12,6 +12,7 @@ dependencies = ["textual>=1.0,<9", "httpx>=0.28,<1", "keyring>=25,<26"]
 issueboard = "issueboard.app:main"
 youtrack-board = "youtrack_board.app:main"
 gitlab-board = "gitlab_board.app:main"
+jira-board = "jira_board.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -23,12 +24,12 @@ dev = ["pytest>=8", "pytest-asyncio>=0.25"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-# issueboard opens either board; youtrack-board and gitlab-board remain for existing scripts and habits.
+# issueboard opens any of the boards; youtrack-board, gitlab-board and jira-board also run on their own.
 [tool.hatch.build.targets.wheel]
-include = ["issueboard", "youtrack_board", "gitlab_board"]
+include = ["issueboard", "youtrack_board", "gitlab_board", "jira_board"]
 
 [tool.hatch.build.targets.sdist]
-include = ["issueboard", "youtrack_board", "gitlab_board", "pyproject.toml", "README.md", "LICENSE"]
+include = ["issueboard", "youtrack_board", "gitlab_board", "jira_board", "pyproject.toml", "README.md", "LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/danickfort/issue-board"

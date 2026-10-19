@@ -2,7 +2,7 @@ import pytest
 
 
 def forbidden():
-    raise AssertionError('a test reached the real OS credential store')
+    raise AssertionError('a test reached the real OS credential store or keychain')
 
 
 @pytest.fixture(autouse=True)
@@ -16,9 +16,10 @@ def isolated(monkeypatch, tmp_path_factory):
     monkeypatch.setenv('HOME', str(home))
     monkeypatch.setenv('XDG_CONFIG_HOME', str(home / 'config'))
     monkeypatch.setenv('XDG_STATE_HOME', str(home / 'state'))
-    for name in ('YOUTRACK_URL', 'YOUTRACK_TOKEN'):
+    for name in ('YOUTRACK_URL', 'YOUTRACK_TOKEN', 'JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr('keyring.get_keyring', forbidden)
+    monkeypatch.setattr('jira_board.credentials.keychain_item', lambda *_, **__: forbidden())
     return home
 
 
@@ -26,3 +27,4 @@ def isolated(monkeypatch, tmp_path_factory):
 def no_timed_refresh(monkeypatch):
     """A slow test must not be refreshed under its feet: tests call tick() themselves."""
     monkeypatch.setattr('issueboard.board.BoardView.REFRESH', 3600)
+    monkeypatch.setattr('jira_board.app.JiraApp.REFRESH', 3600)

@@ -24,6 +24,8 @@ class BoardView(InlineComments, App):
 
     ESCAPE_TO_MINIMIZE = False
 
+    DETAILS = 'Details  (Enter expands with comments · g merge requests · s source)'  # the details pane's title
+
     ALLOW_IN_MAXIMIZED_VIEW = 'Footer, LogPanel'
 
     CSS = '''
@@ -136,7 +138,7 @@ class BoardView(InlineComments, App):
         if self.log_buffer is not None:
             LOGGER.info('%s started · verbose diagnostics enabled · F12 toggles logs', self.TITLE)
             self.set_interval(0.2, self.drain_logs)
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · g merge requests · s source)'
+        self.query_one('#details-pane').border_title = self.DETAILS
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
             self.notify(self.connection, title=f'{self.SERVICE} account', timeout=8)

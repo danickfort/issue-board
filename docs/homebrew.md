@@ -24,14 +24,14 @@ Skip login when already signed in. The formula uses Homebrew's built-in authenti
 
 On recent Homebrew, sandboxed Git downloads receive `HOMEBREW_GITHUB_API_TOKEN` as `GH_TOKEN` through the configured gh helper; an arbitrary token environment variable is not enough. Homebrew's [private download guidance](https://docs.brew.sh/FAQ#how-do-i-authenticate-private-git-source-downloads) describes this behavior. Use an up-to-date Homebrew. The tap itself is cloned using your Git credentials.
 
-The formula links `issueboard`, `youtrack-board` and `gitlab-board`, so it conflicts with the older YouTrack Board and GitLab Board formulas. Switch with:
+The formula links `issueboard`, `youtrack-board`, `gitlab-board` and `jira-board`, so it conflicts with the older YouTrack Board and GitLab Board formulas. Switch with:
 
 ```sh
 brew uninstall youtrack-board gitlab-board   # whichever are installed; preferences and credentials stay
 HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install danickfort/issueboard/issueboard
 ```
 
-GitLab boards need glab (`brew install glab`) and its sign-in; the formula does not install glab, as YouTrack boards do not need it. The app uses an isolated Python 3.14 environment on macOS. It needs no uv or checkout at runtime. The formula test runs both installed demos headlessly and verifies an actual board and its issues without credentials, config writes or network requests.
+GitLab boards need glab (`brew install glab`) and its sign-in; the formula does not install glab, as YouTrack boards do not need it. The app uses an isolated Python 3.14 environment on macOS. It needs no uv or checkout at runtime. The formula test runs the three installed demos headlessly and verifies an actual board and its issues without credentials, config writes or network requests.
 
 ## Update and uninstall
 
@@ -41,7 +41,7 @@ HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade danickfort/issueboard/
 brew uninstall issueboard
 ```
 
-Preferences, saved credentials and the folder choices in `~/.config/issueboard/directories.json` survive uninstall. To remove the YouTrack keychain entry and URL first, run `youtrack-board --logout`. It never removes credentials from Claude/Codex MCP configs. GitLab sign-ins belong to glab: `glab auth logout`.
+Preferences, saved credentials and the folder choices in `~/.config/issueboard/directories.json` survive uninstall. To remove the YouTrack and Jira keychain entries and their config first, run `youtrack-board --logout` and `jira-board --logout`. It never removes credentials from Claude/Codex MCP configs. GitLab sign-ins belong to glab: `glab auth logout`.
 
 ## Publish a release
 

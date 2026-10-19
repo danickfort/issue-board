@@ -1,8 +1,9 @@
-"""Issue Board: one command for YouTrack Board and GitLab Board that remembers which board each project folder opens.
+"""Issue Board: one command for YouTrack Board, GitLab Board and Jira Board that remembers which board each project
+folder opens.
 
 A folder is its Git checkout's root, so subfolders share it and each worktree has its own; outside Git, the folder
 itself. The choices live in the user's config folder, never in the project, and one is saved only after its setup
-succeeds. Credentials stay where each board keeps them: the OS credential store for YouTrack, glab for GitLab.
+succeeds. Credentials stay where each board keeps them: the OS credential store for YouTrack and Jira, glab for GitLab.
 """
 import argparse
 import asyncio
@@ -19,6 +20,10 @@ from gitlab_board import app as gitlab_app
 from gitlab_board import glab, remotes, target
 from gitlab_board.client import Client as GitLab
 from gitlab_board.glab import GlabError
+from jira_board import app as jira_app
+from jira_board import credentials as jira_credentials
+from jira_board.client import Client as Jira
+from jira_board.client import JiraError
 from youtrack_board import app as youtrack_app
 from youtrack_board import credentials
 from youtrack_board.client import Client as YouTrack
@@ -26,8 +31,8 @@ from youtrack_board.client import YouTrackError
 from .prefs import default_path, write_json
 from .widgets import Picker, plain
 
-BACKENDS = {'youtrack': 'YouTrack', 'gitlab': 'GitLab'}
-ISSUE_ID = re.compile(r'(?<![A-Za-z0-9])[A-Z][A-Z0-9_]*-\d+')  # a YouTrack issue ID such as WEB-12
+BACKENDS = {'youtrack': 'YouTrack', 'gitlab': 'GitLab', 'jira': 'Jira'}
+ISSUE_ID = re.compile(r'(?<![A-Za-z0-9])([A-Z][A-Z0-9_]*)-\d+')  # an issue key such as WEB-12, as YouTrack and Jira use
 
 
 class Cancelled(Exception):
@@ -63,7 +68,8 @@ def saved_choice(choices, folder):
     choice = choices.get(folder)
     if not isinstance(choice, dict):
         return None
-    if choice.get('backend') == 'youtrack' and isinstance(choice.get('url'), str) and isinstance(choice.get('board'), str):
+    if choice.get('backend') in ('youtrack', 'jira') and isinstance(choice.get('url'), str) \
+            and isinstance(choice.get('board'), str):
         return choice
     if choice.get('backend') == 'gitlab' and isinstance(choice.get('board'), str):
         return choice
@@ -73,7 +79,7 @@ def saved_choice(choices, folder):
 def describe(choice):
     if choice['backend'] == 'gitlab':
         return f'GitLab board {choice["board"]}'
-    return f'YouTrack board {choice.get("name") or choice["board"]} on {choice["url"]}'
+    return f'{BACKENDS[choice["backend"]]} board {choice.get("name") or choice["board"]} on {choice["url"]}'
 
 
 def read_state(path):
@@ -86,14 +92,15 @@ def read_state(path):
     return data if isinstance(data, dict) else {}
 
 
-def evidence(cwd):
+def evidence(cwd, choices=None):
     """(the backends local clues point to, lines saying why, the checkout's remotes). Only local clues count: GitLab hosting
-    the code says nothing about the tracker, as YouTrack projects often keep their code on GitLab."""
+    the code says nothing about the tracker, as YouTrack and Jira projects often keep their code on GitLab. Nor does an
+    issue key in the branch name alone: YouTrack and Jira both write them as WEB-12."""
     try:
         found = remotes.remotes(cwd)
     except remotes.NoRemote:
         found = []
-    clues = {'youtrack': [], 'gitlab': []}
+    clues = {'youtrack': [], 'gitlab': [], 'jira': []}
     urls = {f'https://{r.host}/{r.path}'.casefold(): r for r in found}
     for server, section in read_state(default_path('youtrack-board')).items():
         repos = section.get('repos') if isinstance(section, dict) else None
@@ -107,11 +114,20 @@ def evidence(cwd):
         if any(isinstance(k, str) and (k == r.path or k.startswith(r.path + '/-/boards/')) for k in keys):
             clues['gitlab'].append(f'GitLab Board has opened boards of {r.host}/{r.path}.')
     branch = (remotes.git(cwd, 'branch', '--show-current') or '').strip()
+    neutral = []
     if issue := ISSUE_ID.search(branch):
-        clues['youtrack'].append(f'The branch {branch} names {issue.group()}, like a YouTrack issue ID.')
-    hosted = [f'The code is on {r.host}/{r.path}; GitLab also hosts code of YouTrack projects, so that alone decides '
-              'nothing.' for r in found]
-    return [backend for backend, lines in clues.items() if lines], [*clues['youtrack'], *clues['gitlab'], *hosted], found
+        jira = sorted({c['url'] for c in (choices or {}).values() if isinstance(c, dict) and c.get('backend') == 'jira'
+                       and c.get('project') == issue.group(1)})
+        if jira:
+            clues['jira'].append(f'The branch {branch} names {issue.group()}, and other folders open Jira boards of '
+                                 f'project {issue.group(1)} on {", ".join(jira)}.')
+        else:
+            neutral.append(f'The branch {branch} names {issue.group()}, an issue key as YouTrack and Jira both write '
+                           'them, so that alone decides nothing.')
+    hosted = [f'The code is on {r.host}/{r.path}; GitLab also hosts code of YouTrack and Jira projects, so that alone '
+              'decides nothing.' for r in found]
+    return [backend for backend, lines in clues.items() if lines], [*(l for lines in clues.values() for l in lines),
+                                                                     *neutral, *hosted], found
 
 
 def ask(prompt):
@@ -164,7 +180,7 @@ def pick_tracker(title, options, default=None):
 
 
 def choose_backend(folder, cwd, current):
-    pointing, why, found = evidence(cwd)
+    pointing, why, found = evidence(cwd, read_directories())
     print(f'Issue Board: which issue tracker does {folder} use?')
     for line in why or ['No clues found here.']:
         print(f'  · {line}')
@@ -200,6 +216,42 @@ def setup_youtrack():
     board = pick('YouTrack board:', [(b['id'], b['name']) for b in shown], 0 if len(shown) == 1 else None)
     name = next(b['name'] for b in shown if b['id'] == board)
     return {'backend': 'youtrack', 'url': account.url, 'project': project, 'board': board, 'name': name}, (account, connection)
+
+
+def jira_call(account, call):
+    async def load():
+        client = Jira(account.url, account.email, account.token)
+        try:
+            return await call(client)
+        finally:
+            await client.close()
+    return asyncio.run(load())
+
+
+def setup_jira():
+    """Sign in as the Jira board does (saved, ALS keychain or new credentials), then choose a project and a board."""
+    account, connection = jira_credentials.connect()
+    print(f'Jira site: {account.url} (another site: run jira-board --setup first).')
+    recent = jira_call(account, lambda client: client.recent_projects())
+    other = '\x00other'
+    project = pick('Jira project:', [(None, 'All projects (every board on the site; slower on big sites)'),
+                                     *((p['key'], f'{p["key"]} · {p.get("name") or ""}') for p in recent if p.get('key')),
+                                     (other, 'Another project key: type it')], 0)
+    while project == other:
+        project = ask('Jira project key, e.g. ABC: ').upper() or None
+        if project and not jira_app.PROJECT_KEY.fullmatch(project):
+            print(f'{project} is not a Jira project key.')
+            project = other
+    print(f'Loading the boards{f" of {project}" if project else ""}…')
+    boards = sorted(jira_call(account, lambda client: client.boards(project)), key=lambda b: (b.get('name') or '').casefold())
+    if not boards:
+        raise jira_credentials.SetupError(f'No boards you can see{f" in {project}" if project else ""} on {account.url}. '
+                                          'Nothing was saved for this folder.')
+    labels = [(str(b['id']), f'{b.get("name")} · {b.get("type", "")} · {(b.get("location") or {}).get("projectKey") or ""}')
+              for b in boards]
+    board = pick('Jira board:', labels, 0 if len(boards) == 1 else None)
+    name = next(b['name'] for b in boards if str(b['id']) == board)
+    return {'backend': 'jira', 'url': account.url, 'project': project, 'board': board, 'name': name}, (account, connection)
 
 
 def signed_in_glab(host):
@@ -269,6 +321,16 @@ def open_youtrack(choice, verbose, signed=None):
     youtrack_app.BoardApp(client, prefs, connection, cwd=os.curdir, verbose=verbose).run()
 
 
+def open_jira(choice, verbose, signed=None):
+    # Only credentials for the folder's own site: a token is never sent to another Jira.
+    account, connection = signed or jira_credentials.connect(choice['url'], interactive=sys.stdin.isatty())
+    client = Jira(account.url, account.email, account.token)
+    prefs = jira_app.Prefs(default_path('jira-board'), client.base_url)
+    prefs.data['project'] = choice.get('project') if isinstance(choice.get('project'), str) else None
+    prefs.visit(choice['board'])  # the most recently opened board is the one that opens
+    jira_app.JiraApp(client, prefs, connection, verbose=verbose).run()
+
+
 def open_gitlab(choice, verbose, version=None):
     start = target.parse(choice['board'])
     target.filters(start.params)
@@ -279,17 +341,18 @@ def open_gitlab(choice, verbose, version=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='issueboard', description='A keyboard-driven YouTrack or GitLab issue board in the terminal',
+        prog='issueboard', description='A keyboard-driven YouTrack, GitLab or Jira issue board in the terminal',
         epilog='The first start in a project folder asks which tracker it uses, suggesting one from local clues, then '
                'sets it up and remembers the board for the folder (a Git checkout counts as one folder; each worktree '
-               'as its own). youtrack-board and gitlab-board still work on their own, with all their options.')
+               'as its own). youtrack-board, gitlab-board and jira-board also work on their own, with all their '
+               'options.')
     parser.add_argument('--setup', action='store_true', help='choose again which tracker and board this folder opens')
     parser.add_argument('--demo', choices=BACKENDS, help='try a board with in-memory sample data; reads and saves nothing')
     parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
     args = parser.parse_args(argv)
     verbose = ['--verbose'] if args.verbose else []
     if args.demo:
-        (youtrack_app if args.demo == 'youtrack' else gitlab_app).main(['--demo', *verbose])
+        {'youtrack': youtrack_app, 'gitlab': gitlab_app, 'jira': jira_app}[args.demo].main(['--demo', *verbose])
         return
     folder = directory()
     choice = saved_choice(read_directories(), folder)
@@ -297,10 +360,10 @@ def main(argv=None):
         if args.setup or not choice:
             if not sys.stdin.isatty():
                 sys.exit(f'issueboard: {"setup needs" if choice else f"{folder} has no board yet; choosing one needs"} '
-                         'an interactive terminal. Run issueboard there, or start youtrack-board or gitlab-board '
-                         'directly (gitlab-board takes a board URL).')
+                         'an interactive terminal. Run issueboard there, or start youtrack-board, gitlab-board or '
+                         'jira-board directly (gitlab-board takes a board URL).')
             backend, found = choose_backend(folder, os.curdir, choice and choice['backend'])
-            choice, signed = setup_youtrack() if backend == 'youtrack' else setup_gitlab(found)
+            choice, signed = {'youtrack': setup_youtrack, 'jira': setup_jira}.get(backend, lambda: setup_gitlab(found))()
             try:
                 write_json(config_path(), {'directories': {**read_directories(), folder: choice}})
                 print(f'{folder} opens {describe(choice)} from now on; issueboard --setup changes it.')
@@ -308,11 +371,9 @@ def main(argv=None):
                 print(f'Could not save {config_path()} ({exc}); the next start asks again.', file=sys.stderr)
         else:
             signed = None
-        if choice['backend'] == 'youtrack':
-            open_youtrack(choice, args.verbose, signed)
-        else:
-            open_gitlab(choice, args.verbose, signed)
-    except (Cancelled, credentials.SetupError, YouTrackError, GlabError, target.TargetError, OSError) as exc:
+        {'youtrack': open_youtrack, 'jira': open_jira}.get(choice['backend'], open_gitlab)(choice, args.verbose, signed)
+    except (Cancelled, credentials.SetupError, YouTrackError, GlabError, target.TargetError, jira_credentials.SetupError,
+            JiraError, OSError) as exc:
         sys.exit(f'issueboard: {exc}')
 
 
