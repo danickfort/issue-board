@@ -16,6 +16,7 @@ from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from youtrack_board.app import Picker, plain
+from youtrack_board.diagnostics import LOGGER
 
 from . import target
 from .glab import GlabError
@@ -202,6 +203,8 @@ class MergeRequestsScreen(ModalScreen):
         self.hint(hint, error)
 
     def hint(self, text, error=False):
+        if error:
+            LOGGER.error('%s', text)
         keys = '  ·  r reload' + ('  ·  i linked issue' if self.links and self.mrs else '') + \
             ('  ·  u repository' if self.repo else '') + '  ·  Esc back'
         self.query_one('#mr-hint', Static).update(Text(plain(text) + keys))

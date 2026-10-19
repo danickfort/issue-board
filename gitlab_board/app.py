@@ -27,6 +27,8 @@ from .demo import HOST as DEMO_HOST
 from .demo import DemoClient, demo_state
 from .glab import GlabError
 from .markup import glfm
+from youtrack_board.diagnostics import LogPanel
+
 from .merge_requests import MergeRequestsScreen
 
 ASK = '\x00ask'  # picker value for "enter a URL or path"; never a GitLab path
@@ -232,10 +234,10 @@ class GitLabApp(BoardApp):
     BINDINGS = [('p', 'pick_project', 'Place'), ('B', 'backlog', 'List'),
                 Binding('e', 'lanes', 'Epic swimlanes', show=False), Binding('D', 'make_default', 'Default board', show=False)]
 
-    def __init__(self, client, prefs=None, via=None, start=None, remotes=(), note=None):
+    def __init__(self, client, prefs=None, via=None, start=None, remotes=(), note=None, verbose=False):
         """remotes: the GitLab projects of the Git checkout the app started in (several: it asks which). note: why the
         checkout gave none, shown once."""
-        super().__init__(client, prefs or Prefs(None, client.host))
+        super().__init__(client, prefs or Prefs(None, client.host), verbose=verbose)
         self.start = start  # the Target to open: a board (with its URL filters), a project or a group
         self.via, self.place = via, None  # via: the glab version, named with the account once GitLab answers
         self.remotes, self.note = remotes, note
@@ -257,6 +259,8 @@ class GitLabApp(BoardApp):
         yield ScrollableContainer(id='board', can_focus=False)
         with VerticalScroll(id='details-pane', can_maximize=True):
             yield Static('', id='details', markup=False)
+        if self.log_buffer is not None:
+            yield LogPanel()
         yield Footer(show_command_palette=False)
 
     def notify(self, message, *, markup=False, **options):
@@ -780,6 +784,7 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--demo', action='store_true', help='try with in-memory sample data; runs no glab, saves nothing')
     modes.add_argument('--auth-status', action='store_true', help='check glab and its sign-in for the host, then exit')
+    parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
     args = parser.parse_args()
     try:
         start = target.parse(args.url, DEMO_HOST if args.demo else args.hostname or 'gitlab.com') if args.url else None
@@ -790,7 +795,7 @@ def main():
     if args.demo:
         client = DemoClient()
         state = demo_state()
-        GitLabApp(client, Prefs(None, client.host, state), start=start or target.parse(state['project'], client.host)).run()
+        GitLabApp(client, Prefs(None, client.host, state), start=start or target.parse(state['project'], client.host), verbose=args.verbose).run()
         return
     host, found, versions, note = start.host if start else args.hostname or 'gitlab.com', [], {}, None
     try:
@@ -818,7 +823,7 @@ def main():
     if not start and not found:
         sys.exit(f'gitlab-board: {note + " " if note else ""}Give a board URL, for example '
                  f'https://{host}/group/project/-/boards/1 (or try --demo).')
-    GitLabApp(Client(host), prefs, version, start, found, note).run()
+    GitLabApp(Client(host), prefs, version, start, found, note, verbose=args.verbose).run()
 
 
 if __name__ == '__main__':

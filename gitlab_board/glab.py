@@ -7,11 +7,15 @@ no user data in argv: GraphQL documents go to stdin, REST reads are GETs whose p
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
+import time
 from urllib.parse import urlencode
+
+from youtrack_board.diagnostics import LOGGER
 
 TIMEOUT = 30  # seconds; GitLab's own GraphQL timeout is 30 s too
 INSTALL = ('Install the GitLab CLI (glab): brew install glab, or see '
@@ -76,11 +80,21 @@ class Glab:
 
     async def run(self, args, stdin=None):
         """glab's stdout for one call. A cancelled or timed-out call kills glab and waits for it, so none is left."""
+        method = args[args.index('--method') + 1] if '--method' in args else 'POST'
+        path = args[args.index('--method') + 2].split('?')[0] if '--method' in args else 'graphql'
+        endpoint = f'https://{self.host}/api/' + ('graphql' if path == 'graphql' else 'v4/' + path)
+        operation = ''
+        if path == 'graphql':
+            match = re.search(r'\b(query|mutation)\b|^\s*{', stdin or '')
+            operation = ' mutation' if match and match.group(1) == 'mutation' else ' query'
+        started = time.monotonic()
+        LOGGER.info('→ %s %s%s', method, endpoint, operation)
         try:
             process = await asyncio.create_subprocess_exec(
                 self.binary, *args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE, cwd=os.path.abspath(os.sep), env=env())
         except FileNotFoundError:
+            LOGGER.error('glab executable not found')
             raise GlabError(INSTALL.format(host=self.host)) from None
         try:
             out, err = await asyncio.wait_for(process.communicate(stdin.encode() if stdin else b''), TIMEOUT)
@@ -88,24 +102,36 @@ class Glab:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
             await asyncio.shield(process.wait())
+            LOGGER.log(logging.DEBUG if isinstance(exc, asyncio.CancelledError) else logging.ERROR,
+                       '← %s %s %s (%.0f ms)', method, endpoint, type(exc).__name__,
+                       (time.monotonic() - started) * 1000)
             if isinstance(exc, asyncio.TimeoutError):
                 raise GlabError(f'{self.host} did not answer within {TIMEOUT} s.') from None
             raise
         out, err = out.decode(errors='replace'), err.decode(errors='replace')
         if process.returncode:
-            raise error(out, err, self.host)
+            failure = error(out, err, self.host)
+            LOGGER.error('← %s %s failed: %s (%.0f ms)', method, endpoint,
+                         f'HTTP {failure.status}' if failure.status else 'glab error',
+                         (time.monotonic() - started) * 1000)
+            raise failure
+        LOGGER.info('← %s %s OK (%.0f ms)', method, endpoint, (time.monotonic() - started) * 1000)
+        if err.strip():
+            LOGGER.warning('glab emitted a diagnostic for %s (raw stderr omitted to protect credentials)', endpoint)
         return out
 
     def parse(self, out):
         try:
             return json.loads(out) if out.strip() else None
         except ValueError:
+            LOGGER.error('glab returned invalid JSON')
             raise GlabError('glab returned something other than JSON. Is it up to date? (glab --version)') from None
 
     async def graphql(self, document):
         """POST one GraphQL document, read from stdin (-F query=@-), and return its data."""
         data = self.parse(await self.run(['api', 'graphql', '--hostname', self.host, '-F', 'query=@-'], document))
         if not isinstance(data, dict) or data.get('errors') or not isinstance(data.get('data'), dict):
+            LOGGER.error('GitLab GraphQL response contains errors or missing data')
             raise error(json.dumps(data), '', self.host)
         return data['data']
 

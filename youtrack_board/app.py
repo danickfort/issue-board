@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -19,6 +20,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Input, Label, ListItem, ListView, OptionList, Select, SelectionList, Static
 from textual.widgets.option_list import Option
 
+from .diagnostics import LOGGER, LogBuffer, LogPanel
 from . import credentials
 from .client import (Client, YouTrackError, assignable_field, custom_field, field_values, group_issues, movable_field,
                      project_lanes, uses_sprints)
@@ -120,6 +122,7 @@ class Picker(ModalScreen):
             self.sync()
 
     def fail(self, message):
+        LOGGER.error('%s', message)
         self.placeholder, self.error = 'Unavailable', message
         if self.is_mounted and self.is_attached:
             self.sync()
@@ -208,6 +211,7 @@ class InlineComments:
         try:
             comments = await self.app.read_comments(issue)
         except self.app.ERROR as exc:
+            LOGGER.error('Could not load comments: %s', exc)
             self.thread = {**self.thread, 'error': str(exc), 'loading': False}
         else:
             self.thread = {**self.thread, 'comments': comments, 'loading': False}
@@ -260,6 +264,8 @@ class CommentsScreen(ModalScreen):
             widget.update(comment_text(comment, self.app.source))
 
     async def show(self, widgets, hint, error=False):
+        if error:
+            LOGGER.error('Could not load comments: %s', hint)
         thread = self.query_one('#thread')
         await thread.remove_children()
         await thread.mount_all(widgets)
@@ -415,6 +421,7 @@ class BacklogScreen(InlineComments, ModalScreen):
         self.load()
 
     def status(self, text, error=False):
+        LOGGER.log(logging.ERROR if error else logging.DEBUG, '%s', text)
         status = self.query_one('#status', Static)
         status.update(Text(plain(text)))
         status.set_class(error, 'error')
@@ -576,6 +583,7 @@ class BoardApp(InlineComments, App):
     REFRESH = 5  # seconds between auto-refreshes of the board on screen
     AUTO_FOCUS = None
     ESCAPE_TO_MINIMIZE = False
+    ALLOW_IN_MAXIMIZED_VIEW = 'Footer, LogPanel'
     CSS = '''
     Screen { background: $surface; }
     #toolbar { height: 1; margin: 0 1; }
@@ -640,12 +648,18 @@ class BoardApp(InlineComments, App):
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
                 Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
                 Binding('G', 'merge_requests(True)', 'All merge requests', show=False),
+                Binding('f12', 'logs', 'Logs', priority=True),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
-    def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None):
+    def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None, verbose=False):
         super().__init__()
         self.client = client
+        self.log_buffer = None
+        if verbose:
+            headers = getattr(getattr(client, 'http', None), 'headers', {})
+            self.log_buffer = LogBuffer([headers.get('Authorization', '').removeprefix('Bearer ')])
+            LOGGER.addHandler(self.log_buffer)
         self.gitlab, self.gitlabs = gitlab, {}  # host -> GitLab client for merge requests; None: glab's, made on first use
         self.cwd = cwd  # the folder the board started in, whose Git remotes may name a project's repository; None: never looked at
         self.connection = connection  # which account and which token, shown once at start
@@ -678,9 +692,30 @@ class BoardApp(InlineComments, App):
         yield ScrollableContainer(id='board', can_focus=False)
         with VerticalScroll(id='details-pane', can_maximize=True):
             yield Static('', id='details', markup=False)
+        if self.log_buffer is not None:
+            yield LogPanel()
         yield Footer(show_command_palette=False)
 
+    def action_logs(self):
+        if self.log_buffer is None:
+            self.notify('Start with --verbose to collect logs.', title='Logs')
+            return
+        panel = self.screen_stack[0].query_one(LogPanel)
+        if panel.display and panel.has_focus:
+            self.action_focus_board()
+        panel.display = not panel.display
+
+    def drain_logs(self):
+        self.screen_stack[0].query_one(LogPanel).drain(self.log_buffer)
+
+    def notify(self, message, *, severity='information', **options):
+        LOGGER.log({'warning': logging.WARNING, 'error': logging.ERROR}.get(severity, logging.INFO), '%s', message)
+        return super().notify(message, severity=severity, **options)
+
     def on_mount(self):
+        if self.log_buffer is not None:
+            LOGGER.info('%s started · verbose diagnostics enabled · F12 toggles logs', self.TITLE)
+            self.set_interval(0.2, self.drain_logs)
         self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · g merge requests · s source)'
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
@@ -692,6 +727,7 @@ class BoardApp(InlineComments, App):
         self.load_boards()
 
     def status(self, text, error=False):
+        LOGGER.log(logging.ERROR if error else logging.DEBUG, '%s', text)
         status = self.query_one('#status', Static)
         status.update(text)
         status.set_class(error, 'error')
@@ -1574,6 +1610,9 @@ class BoardApp(InlineComments, App):
             self.reload()
 
     async def on_unmount(self):
+        if self.log_buffer is not None:
+            LOGGER.removeHandler(self.log_buffer)
+            self.log_buffer.close()
         await self.client.close()
 
 
@@ -1589,12 +1628,13 @@ def main():
     modes.add_argument('--logout', action='store_true', help='remove the saved YouTrack URL and token, then exit')
     modes.add_argument('--auth-status', action='store_true', help='check the credential source and account without opening the board')
     parser.add_argument('--open', action='store_true', help='with --setup, open the instance token page in your browser')
+    parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
     args = parser.parse_args()
     if args.open and not args.setup:
         parser.error('--open requires --setup')
     if args.demo:
         client = DemoClient()
-        BoardApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab).run()
+        BoardApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab, verbose=args.verbose).run()
         return
     try:
         if args.logout:
@@ -1608,7 +1648,7 @@ def main():
         client = Client(account.url, account.token)
     except (credentials.SetupError, YouTrackError, OSError) as exc:
         sys.exit(f'youtrack-board: {exc}')
-    BoardApp(client, Prefs(default_path(), client.base_url), connection, cwd=os.curdir).run()
+    BoardApp(client, Prefs(default_path(), client.base_url), connection, cwd=os.curdir, verbose=args.verbose).run()
 
 
 if __name__ == '__main__':

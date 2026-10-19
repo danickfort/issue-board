@@ -257,6 +257,12 @@ HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/gitlab/git
 
 Run `gitlab-board` inside a repository with a GitLab remote, or `gitlab-board --demo` to explore offline. It installs separately from YouTrack Board. [Installation and usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
 
+## Diagnostic logs
+
+Start with `--verbose` to show a scrollable log panel (`youtrack-board --verbose` or `gitlab-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
+
+The panel records app status, warnings and errors, and network request methods, endpoints, completion times and failures. GitLab requests show glab success/failure and HTTP status when glab supplies it; GraphQL errors are logged separately. Authentication headers, tokens, query values, request/response bodies and raw glab stderr are omitted. Logs stay in memory with bounded history (up to 1,000 rendered lines); nothing is written to disk. Without `--verbose`, no diagnostic history is collected. Startup authentication happens before the panel opens and still reports failures in the terminal.
+
 ## Development
 
 This section is for running or changing the source code. Homebrew users can skip it. A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).

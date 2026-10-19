@@ -139,6 +139,12 @@ Not listed: MRs GitLab hides from your account, and branches without an MR. Up t
 
 `$XDG_STATE_HOME/gitlab-board/state.json` (or `~/.local/state/gitlab-board/state.json`), one section per GitLab host: when each board was opened, the project or group you used last, each project's or group's [default board](#default-board) (`defaults`), and each board's view options. It holds board paths, timestamps and list titles, never tokens or issue content. Nothing in GitLab changes when you change a view. The demo and tests never touch this file.
 
+## Diagnostic logs
+
+Start with `--verbose` to show a scrollable log panel (`youtrack-board --verbose` or `gitlab-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
+
+The panel records app status, warnings and errors, and network request methods, endpoints, completion times and failures. GitLab requests show glab success/failure and HTTP status when glab supplies it; GraphQL errors are logged separately. Authentication headers, tokens, query values, request/response bodies and raw glab stderr are omitted. Logs stay in memory with bounded history (up to 1,000 rendered lines); nothing is written to disk. Without `--verbose`, no diagnostic history is collected. Startup authentication happens before the panel opens and still reports failures in the terminal.
+
 ## Development
 
 A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). From this repository, run `uv sync`, then `uv run gitlab-board --demo`. Use `uv run --project /path/to/checkout gitlab-board` to launch the source version from another code repository.

@@ -1,7 +1,13 @@
+import asyncio
 import json
+import logging
+import time
+
 from urllib.parse import quote, urlsplit
 
 import httpx
+
+from .diagnostics import LOGGER
 
 ISSUE_FIELDS = "id,idReadable,summary,description,project(id,shortName),customFields(id,name,$type,value(id,name,login))"
 BOARD_FIELDS = ("id,name,currentSprint(id),columnSettings(field(name),columns(presentation,ordinal,fieldValues(name))),"
@@ -111,10 +117,20 @@ class Client:
                                      timeout=30, transport=transport, follow_redirects=False)
 
     async def request(self, method, path, **kwargs):
+        endpoint = self.base_url + '/api/' + path.split('?')[0]
+        started = time.monotonic()
+        LOGGER.info('→ %s %s', method, endpoint)
         try:
             response = await self.http.request(method, path, **kwargs)
+        except asyncio.CancelledError:
+            LOGGER.debug('Cancelled %s %s', method, endpoint)
+            raise
         except httpx.RequestError as exc:
+            LOGGER.error('← %s %s failed: %s (%.0f ms)', method, endpoint, type(exc).__name__,
+                         (time.monotonic() - started) * 1000)
             raise YouTrackError('Cannot reach YouTrack. Check the URL and connection.') from exc
+        LOGGER.log(logging.INFO if response.is_success else logging.ERROR, '← %s %s HTTP %s (%.0f ms)', method, endpoint,
+                   response.status_code, (time.monotonic() - started) * 1000)
         if not response.is_success:
             message = f'YouTrack returned HTTP {response.status_code}.'
             try:
@@ -130,6 +146,7 @@ class Client:
         try:
             return response.json() if response.content else None
         except json.JSONDecodeError as exc:
+            LOGGER.error('Invalid JSON response from %s', endpoint)
             raise YouTrackError('Expected JSON from YouTrack; check the base URL.') from exc
 
     async def pages(self, path, fields, **params):
