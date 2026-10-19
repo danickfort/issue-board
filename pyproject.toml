@@ -1,6 +1,6 @@
 [project]
 name = "issueboard"
-version = "0.2.1"
+version = "0.2.2"
 description = "A keyboard-driven terminal issue board for YouTrack and GitLab"
 readme = "README.md"
 license = "MIT"
@@ -31,5 +31,5 @@ include = ["issueboard", "youtrack_board", "gitlab_board"]
 include = ["issueboard", "youtrack_board", "gitlab_board", "pyproject.toml", "README.md", "LICENSE"]
 
 [project.urls]
-Homepage = "https://github.com/krabilousse/issue-board"
-Repository = "https://github.com/krabilousse/issue-board"
+Homepage = "https://github.com/danickfort/issue-board"
+Repository = "https://github.com/danickfort/issue-board"

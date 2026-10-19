@@ -4,16 +4,16 @@ A keyboard-driven issue board in the terminal, for YouTrack Agile boards and Git
 
 ## Installation
 
-The repository and Homebrew tap are private. Your GitHub account needs access to both `krabilousse/issue-board` and `krabilousse/homebrew-youtrack`.
+The repository and Homebrew tap are private. Your GitHub account needs access to both `danickfort/issue-board` and `danickfort/homebrew-issueboard`.
 
 ```sh
 brew install gh
 gh auth login
 gh auth setup-git
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/youtrack/issueboard
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install danickfort/issueboard/issueboard
 ```
 
-The Homebrew tap retains its existing `homebrew-youtrack` name. If YouTrack Board or GitLab Board is installed with Homebrew, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Credentials, preferences and saved state are kept. GitLab boards also need glab: `brew install glab`.
+The Homebrew tap is `danickfort/homebrew-issueboard`. If YouTrack Board or GitLab Board is installed with Homebrew, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Credentials, preferences and saved state are kept. GitLab boards also need glab: `brew install glab`.
 
 Skip `gh auth login` if already signed in to an account with access. The token is passed through the environment for the download; it is never embedded in the formula. Homebrew installs an isolated Python environment, so running the app needs no uv or source checkout.
 
@@ -29,7 +29,7 @@ Update and remove it with:
 
 ```sh
 brew update
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade krabilousse/youtrack/issueboard
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 
