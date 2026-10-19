@@ -42,8 +42,8 @@ def formula(version, source_url, checksum, resources, homepage, revision=None):
   depends_on :macos
   depends_on "python@3.14"
 
-  conflicts_with "youtrack-board", because: "Issue Board installs the youtrack-board command too"
-  conflicts_with "gitlab-board", because: "Issue Board installs the gitlab-board command too"
+  conflicts_with "krabilousse/youtrack/youtrack-board", because: "Issue Board installs the youtrack-board command too"
+  conflicts_with "krabilousse/gitlab/gitlab-board", because: "Issue Board installs the gitlab-board command too"
 
 {blocks}
   def install
