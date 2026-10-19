@@ -17,6 +17,7 @@ MR_BATCH = 50  # reviewer and assignee connections must stay below GitLab's quer
 PEOPLE_PAGES = 5  # up to 500 project members in the assign picker
 OPEN_PAGES = 5  # up to 500 open merge requests searched for a story ID
 NOTE_PAGES = 20  # up to 2,000 comments
+ALL_PAGES = 10  # up to 500 open merge requests, MR_BATCH at a time, in the panel of all of them
 ISSUE = ('id iid title reference(full: true) webUrl state confidential closedAt dueDate type '
          'milestone { title } assignees { nodes { username name } } labels { nodes { title } } '
          'author { username name } description userPermissions { adminIssue createNote }')
@@ -176,6 +177,26 @@ def mentions(key, mr):
     token = re.compile(rf'(?<![A-Za-z0-9]){re.escape(key)}(?![A-Za-z0-9])', re.IGNORECASE)
     return ', '.join(name for name, text in (('title', mr.get('title')), ('branch', mr.get('sourceBranch')),
                                              ('description', mr.get('description'))) if token.search(text or ''))
+
+
+def named(prefixes, mr):
+    """{story ID: where} for every story of these YouTrack project prefixes an MR names, matched as mentions() does."""
+    found = {}
+    for prefix in prefixes:
+        token = re.compile(rf'(?<![A-Za-z0-9]){re.escape(prefix)}-([1-9][0-9]*)(?![A-Za-z0-9])', re.IGNORECASE)
+        for name, text in (('title', mr.get('title')), ('branch', mr.get('sourceBranch')),
+                           ('description', mr.get('description'))):
+            for digits in token.findall(text or ''):
+                found.setdefault(f'{prefix}-{digits}', {})[name] = None
+    return {key: ', '.join(where) for key, where in found.items()}
+
+
+def linked_issue(issue, why):
+    """An issue from GitLab's REST API, shaped as the board's cards are where the app reads them."""
+    reference = (issue.get('references') or {}).get('full') or ''
+    return {'id': f'gid://gitlab/Issue/{int(issue["id"])}', 'iid': str(issue['iid']), 'title': issue.get('title') or '',
+            'reference': reference, 'ref': reference or f'#{issue["iid"]}', 'webUrl': issue.get('web_url') or '',
+            'state': issue.get('state'), 'why': why}
 
 
 def check_comment(text):
@@ -388,6 +409,42 @@ class Client:
                 f'first: {len(batch)}) {{ nodes {{ {MR_EE if ee else MR} }} }} }} }}'))
             nodes.extend(((data.get('project') or {}).get('mergeRequests') or {}).get('nodes') or [])
         return {'mrs': [{**mr, 'why': f'Names {key} in its {found[mr["iid"]]}'} for mr in nodes], 'more': more}
+
+    async def open_merge_requests(self, place):
+        """Every open MR of a project, or of a group and its subgroups, most recently updated first, as GitLab sorts
+        them: MR_BATCH at a time, up to ALL_PAGES pages. Returns {'mrs', 'more'}; more says what was not read."""
+        found, after, more = {}, None, False
+        sub = ', includeSubgroups: true' if place['kind'] == 'group' else ''
+        for _ in range(ALL_PAGES):
+            cursor = f', after: {literal(after)}' if after else ''
+            data = await self.ask(lambda ee: (
+                f'query {{ ns: {self.namespace(place)} {{ mergeRequests(state: opened, sort: UPDATED_DESC{sub}, '
+                f'first: {MR_BATCH}{cursor}) {{ pageInfo {{ hasNextPage endCursor }} '
+                f'nodes {{ {MR_EE if ee else MR} description }} }} }} }}'))
+            if not data.get('ns'):
+                raise GlabError(f'GitLab has no {place["kind"]} {place["path"]} that you can see.')
+            page = data['ns'].get('mergeRequests') or {}
+            for mr in page.get('nodes') or []:  # an MR updated between two pages comes again: keep its first place
+                found.setdefault((mr['project']['fullPath'], mr['iid']), mr)
+            info = page.get('pageInfo') or {}
+            if not info.get('hasNextPage'):
+                break
+            after = info.get('endCursor')
+        else:  # shortcut: the newest 500; page further on demand if a project needs more
+            more = f'only the {MR_BATCH * ALL_PAGES} most recently updated are shown'
+        return {'mrs': list(found.values()), 'more': more}
+
+    async def merge_request_issues(self, mr):
+        """The issues GitLab links to an MR, as far as you may see them: those it closes when merged, then those it
+        mentions (title, description, commits or comments). Read for one MR, when asked."""
+        base = f'projects/{quote(mr["project"]["fullPath"], safe="")}/merge_requests/{int(mr["iid"])}'
+        closing, _ = await self.glab.pages(base + '/closes_issues', 1)  # shortcut: the first 100 of each
+        related, _ = await self.glab.pages(base + '/related_issues', 1)
+        found = {}
+        for issue, why in [(i, 'closes it when merged') for i in closing] + [(i, 'mentions it') for i in related]:
+            if isinstance(issue, dict) and issue.get('id') and issue.get('iid'):
+                found.setdefault(issue['id'], linked_issue(issue, why))
+        return list(found.values())
 
     async def close(self):
         pass

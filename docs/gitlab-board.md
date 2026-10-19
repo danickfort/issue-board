@@ -45,7 +45,7 @@ For a self-managed GitLab, use its host name instead of `gitlab.com`.
 gitlab-board --demo
 ```
 
-No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, and `g` on #3 (*Doing*) for its merge requests.
+No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, `Enter` on #3 (*Doing*) for its details with its comments, and `g` there for its merge requests. `G` lists every open merge request of the project; `i` on one opens the issue it links.
 
 To see how the app reads a board URL whose filters repeat, as the GitLab example does:
 
@@ -103,7 +103,7 @@ Each project and group can have a default board. It opens when you start in the 
 | --- | --- |
 | `←` `→` / `h` `l` | Previous or next list |
 | `↑` `↓` / `j` `k` | Previous or next card; past a lane's edge, the same list in the next swimlane |
-| `Enter`, `Esc` | Expand the details; back to the board |
+| `Enter`, `Esc` | Expand the details, with the issue's [comments](#comments-in-the-details) under them; back to the board |
 | `/`, `x` | Filter loaded cards by `#`, title, assignee or label; clear local filters |
 | `M`, `v` | Only issues assigned to me; view options: compact cards, epic swimlanes, hidden lists |
 | `e` | Epic swimlanes on or off for this board (GitLab Premium or Ultimate) |
@@ -111,18 +111,27 @@ Each project and group can have a default board. It opens when you start in the 
 | `a` | Assign a project member, or unassign. Replaces all current assignees |
 | `c`, `C` | Write a one-line comment; read comments, newest first |
 | `g` | The issue's open [merge requests](#merge-requests) and their status, read-only |
+| `G` | Every open merge request of the board's project or group, most recently updated first; `i` opens the issue one links |
 | `s`, `o` | Markdown source or formatted text; open the issue in the browser |
 | `B` | The focused list in full, 50 issues at a time (Open is GitLab's backlog list), read-only |
 | `b`, `p` | Another board here; another project or group, or a URL or path |
 | `D` | Make this board the [default](#default-board) of its project or group |
-| `r`, `R` | Reload; auto-refresh every 5 s on or off for this board |
+| `r`, `R` | Reload (on expanded details: their comments); auto-refresh every 5 s on or off for this board |
 | `?`, `q` | All keys; quit |
+
+## Comments in the details
+
+`Enter` expands the selected issue's details and reads its comments, newest first, under the description: author, time, edited, internal notes marked, and formatted Markdown (`s` shows the source). The details scroll with `↑` `↓`, `PgUp` `PgDn`, `Home` `End`. GitLab's system notes are left out, as with `C`. Comments are read only then, and on `r` while the details are expanded, never while the cursor moves between cards and never by auto-refresh. While they load, the details say so; an empty thread or an error says so too, and `r` retries. An answer for an issue that is no longer selected is dropped. A comment written with `c` shows at once. The same works in the full list (`B`). `C` still opens the comments on their own.
 
 ## Merge requests
 
 `g` lists the selected issue's open merge requests (MRs), the ones GitLab's issue page shows under *Development*: MRs that close the issue when merged, and MRs that mention it (in the issue's description or comments, or from an MR, a commit or another project, which GitLab records as "mentioned in"). No setup is needed. MRs in other projects of the same GitLab are included, shown as `group/project!12`; MRs from forks too.
 
-Each MR shows whether it closes or mentions the issue, draft, pipeline (or "no pipeline"), GitLab's merge status ("ready to merge", "needs approval", "conflicts"…, "not checked yet" while GitLab has not computed it) and, on Premium, approvals. The panel also shows each MR's author, assignees and reviewers, whether auto-merge is set, its number of comments, and how many of its resolvable threads are resolved or unresolved. GitLab's system activity is not counted, and ordinary comments cannot be resolved. `PgUp` and `PgDn` scroll the selected MR's details. Merged and closed MRs are counted, not listed. `Enter` or `o` opens an MR in the browser if its address is an MR page on the board's host. `r` reloads; Escape or `g` returns to the card. MRs are read for the selected issue when the panel opens (one GraphQL query) and on `r`, never by auto-refresh. The panel only reads.
+Each MR shows whether it closes or mentions the issue, draft, pipeline (or "no pipeline"), GitLab's merge status ("ready to merge", "needs approval", "conflicts"…, "not checked yet" while GitLab has not computed it) and, on Premium, approvals. The panel also shows each MR's author, assignees and reviewers, whether auto-merge is set, its number of comments, and how many of its resolvable threads are resolved or unresolved. GitLab's system activity is not counted, and ordinary comments cannot be resolved. `PgUp` and `PgDn` scroll the selected MR's details. Merged and closed MRs are counted, not listed. `Enter` or `o` opens an MR in the browser if its address is an MR page on the board's host. `r` reloads; Escape, `g` or `G` returns to the card. MRs are read for the selected issue when the panel opens (one GraphQL query) and on `r`, never by auto-refresh. The panel only reads.
+
+`G` lists every open MR of the board's project, or of its group and subgroups, most recently updated first, as GitLab sorts them, with the same status and details. It reads 50 at a time, up to the 500 most recently updated, and says so when there are more.
+
+`i` opens an issue the selected MR links, in both panels. GitLab says which: the issues the MR closes when merged (`closes_issues`), then those it mentions (`related_issues`), including issues of other projects, as far as your account may see them. One issue opens at once; several are offered to choose from; none is said. An issue on the board opens in place: its card is selected and its details expand with its comments. Any other issue opens in the browser, only if its address is on the board's host. The issues are read for that MR when you press `i`.
 
 Not listed: MRs GitLab hides from your account, and branches without an MR. Up to 100 closing and 100 mentioning MRs are read; the panel says when GitLab has more. Sources and limits: [docs/plans/linked-merge-requests.md](plans/linked-merge-requests.md).
 

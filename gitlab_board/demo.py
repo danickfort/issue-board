@@ -8,7 +8,7 @@ import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
-from .client import check_comment, issue_links, mentions, move_effects, number, project_path
+from .client import check_comment, issue_links, linked_issue, mentions, move_effects, number, project_path
 from .glab import GlabError
 
 HOST = 'gitlab.example.com'
@@ -97,8 +97,8 @@ MERGE_REQUESTS = [
      None, ['portal#3'], []),
     ('portal', 'Draft: Explain sign-in errors', 'sign-in-errors', "Shows glab's own message. Part of DEMO-3.", 'opened', True,
      'FAILED', 'DRAFT_STATUS', False, 'sam/portal', [], ['portal#3']),
-    ('api', 'Rate limit glab calls', '3-rate-limit', '', 'opened', False, 'RUNNING', 'CI_STILL_RUNNING', False, None, [],
-     ['portal#3']),
+    ('api', 'Rate limit glab calls', '3-rate-limit', '', 'opened', False, 'RUNNING', 'CI_STILL_RUNNING', False, None,
+     ['api#1'], ['portal#3']),
     ('portal', 'First glab spike', 'spike-glab', 'For DEMO-3.', 'merged', False, 'SUCCESS', 'NOT_OPEN', False, None, [],
      ['portal#3']),
     ('portal', 'Arrow keys across lanes', 'demo-1-lanes', '', 'opened', False, None, 'CHECKING', True, None, ['portal#1'], []),
@@ -326,6 +326,23 @@ class DemoClient:
         return {'mrs': [{**deepcopy(mr), 'why': f'Names {key} in its {where}'} for mr, _, _ in self.merge_requests
                         if mr['project']['fullPath'] == path and mr['state'] == 'opened' and (where := mentions(key, mr))],
                 'more': False}
+
+    async def open_merge_requests(self, place):
+        inside = (lambda p: p.startswith(place['path'] + '/')) if place['kind'] == 'group' else place['path'].__eq__
+        found = [deepcopy(mr) for mr, _, _ in self.merge_requests
+                 if mr['state'] == 'opened' and inside(mr['project']['fullPath'])]
+        return {'mrs': sorted(found, key=lambda mr: mr['updatedAt'], reverse=True), 'more': False}
+
+    async def merge_request_issues(self, mr):
+        closes, mentions = next((c, m) for found, c, m in self.merge_requests
+                                if (found['project']['fullPath'], found['iid']) == (mr['project']['fullPath'], mr['iid']))
+        found = {}
+        for ref, why in [(r, 'closes it when merged') for r in closes] + [(r, 'mentions it') for r in mentions]:
+            issue = next(i for i in self.issues if i['reference'] == 'demo/' + ref)
+            found.setdefault(issue['id'], linked_issue({
+                'id': number(issue['id']), 'iid': issue['iid'], 'title': issue['title'], 'state': issue['state'],
+                'references': {'full': issue['reference']}, 'web_url': issue['webUrl']}, why))
+        return list(found.values())
 
     async def comment(self, issue, text):
         check_comment(text)

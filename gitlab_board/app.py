@@ -366,14 +366,33 @@ class GitLabApp(BoardApp):
     def comments_screen(self, issue, writable=True):
         return NotesScreen(self.client, issue, writable)
 
-    def action_merge_requests(self):
-        if self.selected:
+    async def read_comments(self, issue):
+        return await self.client.notes(issue)
+
+    def comment_view(self, comment):
+        return note_text(comment, self.source)
+
+    def same(self, issue, other):
+        return issue['id'] == other['id']
+
+    def action_merge_requests(self, everything=False):
+        """g: the open MRs GitLab links to the selected issue; G: every open MR of the board's project or group."""
+        links = self.client.merge_request_issues
+        if everything and self.place:
+            place, group = self.place, self.place['kind'] == 'group'
+            self.push_screen(MergeRequestsScreen(
+                f'All open merge requests · {place["path"]}',
+                f'In {place["path"]}{" and its subgroups" if group else ""}, most recently updated first · i opens an '
+                'issue an MR closes or mentions', lambda: self.client.open_merge_requests(place), self.client.host,
+                None if group else place['path'], links=links, empty=f'No open merge request in {place["path"]}.'),
+                self.merge_requests_closed)
+        elif self.selected and not everything:
             issue = self.selected
             self.push_screen(MergeRequestsScreen(
                 f'Open merge requests · {self.ref(issue)} {plain(issue["title"])}',
                 'Linked on GitLab, as on the issue page: closing or mentioning this issue',
-                lambda: self.client.issue_merge_requests(issue), self.client.host, project_path(issue)),
-                lambda _: self.focused or self.action_focus_board())
+                lambda: self.client.issue_merge_requests(issue), self.client.host, project_path(issue), links=links),
+                self.merge_requests_closed)
 
     def list_of(self, issue=None):
         """The list the selected card sits in (it can sit in several), else the focused column's."""
@@ -736,7 +755,7 @@ class GitLabApp(BoardApp):
                 self.status(f'{self.ref(issue)}: you cannot comment here (locked discussion or no access).', error=True)
                 return
             self.push_screen(CommentDialog(f'Comment on {self.ref(issue)}'), lambda value: value and self.write(
-                issue, lambda: self.client.comment(issue, value), f'Comment added to {self.ref(issue)}.', reload=False))
+                issue, lambda: self.save_comment(issue, value), f'Comment added to {self.ref(issue)}.', reload=False))
 
     def open_issue(self, issue, status):
         url = issue.get('webUrl') or ''

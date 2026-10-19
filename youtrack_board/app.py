@@ -8,6 +8,7 @@ import webbrowser
 from urllib.parse import quote
 
 from rich.console import Group
+from rich.rule import Rule
 from rich.text import Text
 from textual import events, on, work
 from textual.app import App, ComposeResult
@@ -179,6 +180,40 @@ class CommentDialog(ModalScreen):
             self.dismiss(event.value.strip())
 
 
+class InlineComments:
+    """The selected issue's comments under its details, read when the details expand (Enter) and on r there, never
+    while the cursor moves. An answer only shows while its issue is selected; a newer read cancels an older one."""
+    thread = None  # {'id': issue id, 'comments': list or None, 'error': text or None, 'loading': bool}
+
+    def with_comments(self, issue, details):
+        thread = self.thread if self.thread and self.thread['id'] == issue['id'] else None
+        if not thread:
+            return details
+        comments, parts = thread['comments'], [details, Text('')]
+        count = f'{len(comments)}, newest first' if comments else 'none yet, or none you can see' if comments == [] else ''
+        state = 'loading…' if thread['loading'] else count
+        parts.append(Rule(Text.assemble(('Comments', 'bold'), (f' · {state}' if state else '', 'dim')), align='left',
+                          style='dim'))
+        if thread['error']:
+            parts.append(Text(plain(f'Could not load the comments. {thread["error"]} Press r to retry.'), 'red'))
+        for comment in comments or []:
+            parts += [self.app.comment_view(comment), Text('')]
+        return Group(*parts)
+
+    @work(exclusive=True, group='comments')
+    async def load_comments(self, issue):
+        old = self.thread if self.thread and self.thread['id'] == issue['id'] else {}
+        self.thread = {'id': issue['id'], 'comments': old.get('comments'), 'error': None, 'loading': True}
+        self.show_details()
+        try:
+            comments = await self.app.read_comments(issue)
+        except self.app.ERROR as exc:
+            self.thread = {**self.thread, 'error': str(exc), 'loading': False}
+        else:
+            self.thread = {**self.thread, 'comments': comments, 'loading': False}
+        self.show_details()
+
+
 def comment_text(comment, source=False):
     author = comment.get('author') or {}
     created, updated = comment.get('created'), comment.get('updated')
@@ -346,7 +381,7 @@ class Issues(ListView):
             self.index = max(0, min(len(self) - 1, (self.index or 0) + rows))
 
 
-class BacklogScreen(ModalScreen):
+class BacklogScreen(InlineComments, ModalScreen):
     """A board's backlog: the issues of the saved search the board uses as its backlog, a page at a time, in the order
     YouTrack keeps for it. It covers the board and only reads. Closing it cancels its requests, so no late answer lands,
     and the board underneath is left exactly as it was."""
@@ -375,7 +410,7 @@ class BacklogScreen(ModalScreen):
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands · C comments · s source · Esc returns)'
+        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · s source · Esc returns)'
         self.query_one('#backlog').focus()
         self.load()
 
@@ -396,7 +431,10 @@ class BacklogScreen(ModalScreen):
         return self.query_one(Input).value.casefold() in f'{search_text(issue)} {names(issue, self.field).casefold()}'
 
     def action_load(self):
-        self.load()
+        if self.maximized and self.current():  # r on the expanded details reads its comments again
+            self.load_comments(self.current())
+        else:
+            self.load()
 
     @work(exclusive=True, group='backlog')
     async def load(self):
@@ -490,7 +528,7 @@ class BacklogScreen(ModalScreen):
     def show_details(self):
         item, details = self.query_one('#backlog', ListView).highlighted_child, self.query_one('#details', Static)
         if isinstance(item, Row):
-            details.update(self.details(item.issue))
+            details.update(self.with_comments(item.issue, self.details(item.issue)))
         elif isinstance(item, More):
             details.update(Text(f'Enter or n loads the next {self.PAGE} issues of the backlog.', 'dim'))
         else:
@@ -504,6 +542,7 @@ class BacklogScreen(ModalScreen):
             pane = self.query_one('#details-pane')
             pane.focus()
             self.maximize(pane)
+            self.load_comments(event.item.issue)
 
     def action_back(self):
         """Escape steps back: from the details or the search to the list, then to the board."""
@@ -529,7 +568,7 @@ class BacklogScreen(ModalScreen):
         self.show_details()
 
 
-class BoardApp(App):
+class BoardApp(InlineComments, App):
     TITLE = 'YouTrack Board'
     SERVICE = 'YouTrack'
     ERROR = YouTrackError  # what the client raises when the service refuses or cannot be reached
@@ -600,6 +639,7 @@ class BoardApp(App):
                 Binding('s', 'source', 'Markdown source', show=False),
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
                 Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
+                Binding('G', 'merge_requests(True)', 'All merge requests', show=False),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
@@ -641,7 +681,7 @@ class BoardApp(App):
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands · C comments · g merge requests · s source)'
+        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · g merge requests · s source)'
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
             self.notify(self.connection, title=f'{self.SERVICE} account', timeout=8)
@@ -756,6 +796,9 @@ class BoardApp(App):
             self.load_issues()
 
     def action_refresh(self):
+        if self.screen.maximized and self.selected:  # r on the expanded details reads its comments again
+            self.load_comments(self.selected)
+            return
         self.people.clear()
         self.reload()
 
@@ -1058,7 +1101,7 @@ class BoardApp(App):
     def show_details(self):
         details = self.query_one('#details', Static)
         if self.selected:
-            details.update(self.details(self.selected))
+            details.update(self.with_comments(self.selected, self.details(self.selected)))
         else:
             details.update('No card selected.')
 
@@ -1077,6 +1120,7 @@ class BoardApp(App):
             pane = self.query_one('#details-pane')
             pane.focus()
             self.screen.maximize(pane)
+            self.load_comments(self.selected)
 
     def action_filter(self):
         self.screen.minimize()
@@ -1318,40 +1362,61 @@ class BoardApp(App):
         if self.selected and not self.busy:
             issue = self.selected
             self.push_screen(CommentDialog(f'Comment on {issue["idReadable"]}'), lambda value: value and self.write(
-                issue, lambda: self.client.comment(issue, value), f'Comment added to {issue["idReadable"]}.', reload=False))
+                issue, lambda: self.save_comment(issue, value), f'Comment added to {issue["idReadable"]}.', reload=False))
+
+    async def save_comment(self, issue, text):
+        await self.client.comment(issue, text)
+        if self.thread and self.thread['id'] == issue['id']:  # the details show its comments: show the new one too
+            self.load_comments(issue)
 
     def comments_screen(self, issue, writable=True):
         return CommentsScreen(self.client, issue, writable)
+
+    async def read_comments(self, issue):
+        return await self.client.comments(issue)
+
+    def comment_view(self, comment):
+        return comment_text(comment, self.source)
 
     def action_comments(self):
         if self.selected:
             self.push_screen(self.comments_screen(self.selected), self.comments_closed)
 
-    def action_merge_requests(self):
-        """Open GitLab merge requests naming the story, in the repository chosen for its project the first time."""
-        if self.selected:
-            url = self.prefs.data['repos'].get((self.selected.get('project') or {}).get('id'))
-            if url:
-                self.open_merge_requests(self.selected, url)
-            elif self.cwd and (self.gitlab or shutil.which('glab')):
-                self.find_repository(self.selected)
-            else:
-                self.ask_repository(self.selected)
+    def action_merge_requests(self, everything=False):
+        """g: open GitLab merge requests naming the selected story; G: every open one of the repository of its project
+        (or of the project in scope, or the board's only project). The repository is chosen per project the first time."""
+        story = None if everything else self.selected
+        project = (self.selected or {}).get('project') or (everything and self.context_project())
+        if not project:
+            if everything:
+                self.status('Select a story, or choose a project with p: G lists the open merge requests of its GitLab '
+                            'repository.', error=True)
+            return
+        url = self.prefs.data['repos'].get(project.get('id'))
+        if url:
+            self.open_merge_requests(project, story, url)
+        elif self.cwd and (self.gitlab or shutil.which('glab')):
+            self.find_repository(project, story)
+        else:
+            self.ask_repository(project, story)
+
+    def context_project(self):
+        board = self.board_data or {}
+        return self.scope() or (board['projects'][0] if len(board.get('projects') or []) == 1 else None)
 
     @work(exclusive=True, group='repository')
-    async def find_repository(self, issue):
+    async def find_repository(self, project, story):
         """A project's first g inside a Git checkout: its GitLab remote, without asking when there is one. Like a typed
         URL, it is saved only once GitLab shows it to you. A repository already linked to another project, or several
         remotes, are asked about instead: one checkout says nothing about which YouTrack project it belongs to."""
         from gitlab_board import remotes
         from gitlab_board.glab import GlabError
-        project = issue.get('project') or {}
         self.status('Looking for the GitLab project of this checkout…')
         try:
             found, _ = await asyncio.to_thread(remotes.find, self.cwd)
         except remotes.NoRemote:
             self.show_counts()
-            self.ask_repository(issue)
+            self.ask_repository(project, story)
             return
         except GlabError as exc:
             self.status(f'{exc} Nothing was saved; press g to try again.', error=True)
@@ -1365,26 +1430,25 @@ class BoardApp(App):
                 others = ', '.join((self.projects().get(pid) or {}).get('shortName', pid) for pid in taken)
                 self.notify(f'This checkout’s repository is already linked to {others}. Confirm it for '
                             f'{project.get("shortName")} too, or enter another.', markup=False)
-                self.ask_repository(issue, url)
+                self.ask_repository(project, story, url)
             else:
-                self.open_merge_requests(issue, url, check=True, remote=remote.names)
+                self.open_merge_requests(project, story, url, check=True, remote=remote.names)
             return
         ask = '\x00ask'
         choices = [(url, Text.assemble(f'{r.host}/{r.path}', (f'  {r.names}', 'dim')), f'{url} {r.names}'.casefold(), False)
                    for url, r in urls.items()]
         choices.append((ask, Text('Another repository URL…', 'italic'), None, False))
         self.push_screen(Picker(f'GitLab repository of {project.get("shortName")} stories · this checkout has several',
-                                choices), lambda url: self.ask_repository(issue) if url == ask else url and
-                         self.open_merge_requests(issue, url, check=True, remote=urls[url].names))
+                                choices), lambda url: self.ask_repository(project, story) if url == ask else url and
+                         self.open_merge_requests(project, story, url, check=True, remote=urls[url].names))
 
-    def ask_repository(self, issue, current=''):
+    def ask_repository(self, project, story, current=''):
         if self.gitlab is None and not shutil.which('glab'):
             self.status('Merge requests come from GitLab through its CLI. Install it (brew install glab), sign in with '
                         'glab auth login --hostname <your GitLab host>, then press g again.', error=True)
             return
         from gitlab_board.merge_requests import repository
         from gitlab_board.target import TargetError
-        project = issue.get('project') or {}
 
         def chosen(text):
             if text:
@@ -1393,21 +1457,21 @@ class BoardApp(App):
                 except TargetError as exc:
                     self.status(f'Not a GitLab project URL: {exc} Nothing was saved; press g to try again.', error=True)
                     return
-                self.open_merge_requests(issue, f'https://{host}/{path}', check=True)
+                self.open_merge_requests(project, story, f'https://{host}/{path}', check=True)
         self.push_screen(CommentDialog(f'GitLab repository of {project.get("shortName")} stories',
                                        'https://gitlab.example.com/group/project', current), chosen)
 
-    def open_merge_requests(self, issue, url, check=False, remote=None):
-        """The panel for a repository: a new one (check) is saved for the project once GitLab shows it to you. remote:
-        the checkout's Git remote it was found in."""
+    def open_merge_requests(self, project, story, url, check=False, remote=None):
+        """The panel for a repository: the MRs naming the story, or all open ones without one. A new repository (check)
+        is saved for the project once GitLab shows it to you. remote: the checkout's Git remote it was found in."""
         from gitlab_board.merge_requests import MergeRequestsScreen, repository
         from gitlab_board.target import TargetError
         try:
             host, path = repository(url)
         except TargetError:  # a hand-edited state file: ask again
-            self.ask_repository(issue, url)
+            self.ask_repository(project, story, url)
             return
-        project, key = issue['project'], issue['idReadable']
+        key = story and story['idReadable']
 
         async def load():
             gitlab = self.gitlab_client(host)
@@ -1418,12 +1482,64 @@ class BoardApp(App):
                 found = f', the {remote} remote of this checkout' if remote else ''
                 self.notify(f'{project.get("shortName")} merge requests now come from {host}/{screen.home}{found}. '
                             'Press u in the panel to change it.', markup=False)
-            return await gitlab.project_merge_requests(screen.home, key)
-        screen = MergeRequestsScreen(f'Open merge requests · {key} {plain(issue["summary"])}',
-                                     f'In {host}/{path}, naming {key} in title, branch or description',
-                                     load, host, path, repo=True)
-        self.push_screen(screen, lambda choice: self.ask_repository(issue, url) if choice == 'repo' else
-                         self.focused or self.action_focus_board())
+            if key:
+                return await gitlab.project_merge_requests(screen.home, key)
+            found = await gitlab.open_merge_requests({'kind': 'project', 'path': screen.home})
+            for mr in found['mrs']:
+                named = self.named_stories(mr, host, screen.home)
+                mr['why'] = 'Names ' + '; '.join(f'{k} in its {where}' for k, where in named.items()) if named else \
+                    'Names no story of a project linked to this repository'
+            return found
+
+        async def links(mr):
+            return [{'idReadable': k, 'ref': k, 'why': f'named in its {where}',
+                     'title': next((i['summary'] for i in self.issues_data if i['idReadable'] == k), '')}
+                    for k, where in self.named_stories(mr, host, screen.home).items()]
+        if key:
+            screen = MergeRequestsScreen(f'Open merge requests · {key} {plain(story["summary"])}',
+                                         f'In {host}/{path}, naming {key} in title, branch or description',
+                                         load, host, path, repo=True, links=links)
+        else:
+            screen = MergeRequestsScreen(f'All open merge requests · {host}/{path}',
+                                         f'Most recently updated first · i opens a {project.get("shortName")} story an MR '
+                                         'names', load, host, path, repo=True, links=links,
+                                         empty='No open merge request in this repository.')
+        self.push_screen(screen, lambda choice: self.ask_repository(project, story, url) if choice == 'repo' else
+                         self.merge_requests_closed(choice))
+
+    def named_stories(self, mr, host, path):
+        """{story ID: where} for stories an MR names, of the YouTrack projects whose repository this is: the link g
+        follows. Prefixes of other projects are never matched."""
+        from gitlab_board.client import named
+        repo = f'https://{host}/{path}'.casefold()
+        prefixes = [p['shortName'] for pid, p in self.projects().items()
+                    if (self.prefs.data['repos'].get(pid) or '').casefold() == repo]
+        return named(prefixes, mr)
+
+    def merge_requests_closed(self, choice):
+        """Back from the merge requests: on to an issue an MR links, if one was chosen (i), else to the card."""
+        if isinstance(choice, tuple):
+            self.call_after_refresh(self.show_linked, choice[1])  # after the board has its focus back
+        elif not self.focused:
+            self.action_focus_board()
+
+    def show_linked(self, issue):
+        """The card of an issue an MR links, its details expanded with its comments, if the board shows it; else its
+        page in the browser."""
+        for column in self.query(Column):
+            for n, card in enumerate(column.children):
+                if self.same(card.issue, issue):
+                    self.screen.set_focus(column)
+                    column.index = n
+                    self.show_card(card)  # now: the focus event that would select it comes later
+                    self.action_details()
+                    return
+        self.action_focus_board()
+        self.notify(f'{issue["ref"]} is not shown on this board; opening it in your browser.', markup=False)
+        self.open_issue(issue, self.status)
+
+    def same(self, issue, other):
+        return issue['idReadable'] == other['idReadable']
 
     def gitlab_client(self, host):
         if host not in self.gitlabs:

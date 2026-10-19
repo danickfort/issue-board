@@ -514,6 +514,32 @@ async def test_comments_newest_first_marked_internal_and_written_from_the_board(
         assert client.threads['demo/portal#3'][-1]['body'] == 'Checked in the terminal'
 
 
+async def test_expanded_details_show_the_notes_and_the_list_screen_too():
+    client = DemoClient()
+    reads = []
+    original = client.notes
+
+    async def notes(issue):
+        reads.append(issue['reference'])
+        return await original(issue)
+    client.notes = notes
+    client.threads['demo/portal#3'][0]['body'] = 'Escape \x1b[31mred\x1b[0m and [b]markup[/b]'
+    app, _ = demo_app(client=client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('right', 'right', 'down')
+        assert reads == []
+        await pilot.press('enter')
+        await settle(app, pilot)
+        shown = text(app.query_one('#details', Static).content, 78)
+        assert reads == ['demo/portal#3'] and 'Comments · 3, newest first' in shown
+        assert 'internal note, for project members only' in shown and '\x1b' not in shown and '[b]markup[/b]' in shown
+        assert app.query_one('#details-pane').max_scroll_y > 0
+        await pilot.press('escape', 'B', 'enter')  # the full list's details expand with the notes as well
+        await settle(app, pilot)
+        assert 'Comments ·' in text(app.screen.query_one('#details', Static).content, 78) and len(reads) == 2
+
+
 async def test_full_list_pages_in_board_order_reads_only_and_returns_to_the_board():
     app, client = demo_app()
     async with app.run_test(size=(80, 24)) as pilot:

@@ -1,4 +1,5 @@
-"""The open GitLab merge requests linked to a card, read-only, for the GitLab and the YouTrack board.
+"""Open GitLab merge requests, read-only, for the GitLab and the YouTrack board: those linked to a card, or all of a
+project or group. An issue an MR links can be opened from here (i).
 
 Status words never claim more than GitLab says: a mergeability GitLab has not checked is "not checked yet", and no
 pipeline is "no pipeline", not "passed". See docs/plans/linked-merge-requests.md.
@@ -14,7 +15,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
-from youtrack_board.app import plain
+from youtrack_board.app import Picker, plain
 
 from . import target
 from .glab import GlabError
@@ -139,14 +140,15 @@ def details(mr, home=None):
               f'Assignees: {participants(mr, "assignees")}\n'),
         plain(f'{mr.get("sourceBranch")} → {mr.get("targetBranch")}{fork}\n'),
         plain('  ·  '.join(f'{name}: {value}' for name, value in status if value)), '\n',
-        (plain(f'{mr.get("why") or "Linked"}' + (f' · updated {updated} UTC' if updated else '')), 'dim'))
+        (plain(' · '.join(filter(None, [mr.get('why'), f'updated {updated} UTC' if updated else None]))), 'dim'))
 
 
 class MergeRequestsScreen(ModalScreen):
-    """A card's open MRs, read when it opens and on r. Closing it cancels a request still running, so no late answer
-    lands, and the board behind it stays as it was. Nothing here changes an MR."""
-    BINDINGS = [Binding('escape,g', 'dismiss', 'Close'), Binding('r', 'load', 'Reload'), Binding('o', 'open', 'Browser'),
-                Binding('u', 'dismiss("repo")', 'Change repository'),
+    """Open MRs, read when it opens and on r. Closing it cancels a request still running, so no late answer lands, and
+    the board behind it stays as it was. Nothing here changes an MR. It dismisses with ('issue', issue) when i picks an
+    issue the selected MR links."""
+    BINDINGS = [Binding('escape,g,G', 'dismiss', 'Close'), Binding('r', 'load', 'Reload'), Binding('o', 'open', 'Browser'),
+                Binding('i', 'issue', 'Linked issue'), Binding('u', 'dismiss("repo")', 'Change repository'),
                 Binding('pagedown', 'details_down', 'Scroll details', show=False, priority=True),
                 Binding('pageup', 'details_up', 'Scroll details', show=False, priority=True)]
     # Own ids: the boards' #dialog and .hint rules would outrank DEFAULT_CSS.
@@ -162,15 +164,17 @@ class MergeRequestsScreen(ModalScreen):
     #mr-hint.error { color: $text-error; }
     '''
 
-    def __init__(self, title, about, load, host, home=None, repo=False):
+    def __init__(self, title, about, load, host, home=None, repo=False, links=None,
+                 empty='No open merge request is linked.'):
         """load: an async function returning {'mrs', 'more'}, more saying what was not read, if anything. host: where MR pages may open. home: the project whose
-        MRs are named !iid only. repo: u may dismiss with 'repo' to choose another repository."""
+        MRs are named !iid only. repo: u may dismiss with 'repo' to choose another repository. links: an async function
+        returning the issues an MR links, each with 'ref', 'title' and 'why'. empty: what shows when no MR is open."""
         super().__init__()
         self.prompt, self.about, self.loader, self.host, self.home, self.repo = title, about, load, host, home, repo
-        self.mrs = []
+        self.links, self.empty, self.mrs, self.notes = links, empty, [], ''
 
     def check_action(self, action, parameters):
-        return self.repo or parameters != ('repo',)
+        return (self.repo or parameters != ('repo',)) and (action != 'issue' or self.links is not None)
 
     def compose(self):
         with Vertical(id='mr-dialog'):
@@ -198,7 +202,8 @@ class MergeRequestsScreen(ModalScreen):
         self.hint(hint, error)
 
     def hint(self, text, error=False):
-        keys = '  ·  r reload' + ('  ·  u repository' if self.repo else '') + '  ·  Esc back'
+        keys = '  ·  r reload' + ('  ·  i linked issue' if self.links and self.mrs else '') + \
+            ('  ·  u repository' if self.repo else '') + '  ·  Esc back'
         self.query_one('#mr-hint', Static).update(Text(plain(text) + keys))
         self.query_one('#mr-hint').set_class(error, 'error')
 
@@ -219,12 +224,13 @@ class MergeRequestsScreen(ModalScreen):
         if found.get('more'):
             notes.append(found['more'])
         if not self.mrs:
-            self.show('No open merge request is linked.', ' · '.join(notes))
+            self.show(self.empty, ' · '.join(notes))
             return
         options = self.query_one(OptionList)
         options.set_options([Option(Text.assemble((reference(mr, self.home), 'bold'), '  ', plain(mr['title']), '\n',
                                                   ('  ' + summary(mr), 'dim'))) for mr in self.mrs])
         options.highlighted = next((n for n, mr in enumerate(self.mrs) if mr.get('webUrl') == keep), 0)
+        self.notes = ' · '.join(notes)
         self.query_one('#mr-details', Static).display = True
         self.query_one('#mr-detail-scroll').display = True
         self.hint(' · '.join(notes) + '  ·  Enter/o browser')
@@ -258,3 +264,29 @@ class MergeRequestsScreen(ModalScreen):
             self.app.notify(url, title=f'Opening {reference(mr, self.home)}', markup=False)
         else:
             self.hint(f'No browser available. Open {url}', error=True)
+
+    def action_issue(self):
+        if self.current():
+            self.find_issues(self.current())
+
+    @work(exclusive=True, group='links')
+    async def find_issues(self, mr):
+        """The issues the MR links: one opens at once, several are offered, none is said."""
+        ref = reference(mr, self.home)
+        self.hint(f'Looking for the issues {ref} links…')
+        try:
+            found = await self.links(mr)
+        except GlabError as exc:
+            self.hint(f'Could not read the issues {ref} links. {exc}', error=True)
+            return
+        if not found:
+            self.hint(f'{ref} links no issue you can see  ·  {self.notes}  ·  Enter/o browser')
+        elif len(found) == 1:
+            self.dismiss(('issue', found[0]))
+        else:
+            self.hint(f'{self.notes}  ·  Enter/o browser')
+            choices = [(n, Text.assemble((plain(i['ref']), 'bold'), '  ', plain(i.get('title') or ''),
+                                         (f'  · {plain(i["why"])}', 'dim')), f'{i["ref"]} {i.get("title") or ""}'.casefold(),
+                        False) for n, i in enumerate(found)]
+            self.app.push_screen(Picker(f'{len(found)} issues {ref} links · Enter opens one', choices),
+                                 lambda n: n is not None and self.dismiss(('issue', found[n])))

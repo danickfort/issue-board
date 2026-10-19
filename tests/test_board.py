@@ -648,6 +648,89 @@ async def test_comments_show_errors_with_retry_empty_threads_and_drop_late_answe
         assert app.screen.issue['idReadable'] == 'DEMO-4' and len(thread(app)) == 1
 
 
+def details(app):
+    return rendered(app.screen.query_one('#details', Static).content)
+
+
+async def test_expanded_details_show_the_comments_and_drop_answers_for_another_card():
+    class Held(DemoClient):
+        def __init__(self):
+            super().__init__()
+            self.reads, self.fail, self.hold = [], 0, None
+
+        async def comments(self, issue):
+            self.reads.append(issue['idReadable'])
+            if self.hold and issue['id'] == '3':
+                await self.hold.wait()
+            if self.fail:
+                self.fail -= 1
+                raise YouTrackError('YouTrack returned HTTP 500.')
+            return await super().comments(issue)
+
+    client = Held()
+    client.threads['3'][0]['text'] += '\x1b[2J'
+    app = BoardApp(client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('right', 'j', 'k')  # moving between cards reads no comments
+        await settle(app, pilot)
+        assert client.reads == [] and 'Comments' not in details(app)
+        await pilot.press('enter')  # DEMO-3, expanded: its comments under the description
+        await settle(app, pilot)
+        pane = app.query_one('#details-pane')
+        assert app.screen.maximized is pane and app.focused is pane and client.reads == ['DEMO-3']
+        shown = details(app)
+        assert 'Comments · 3, newest first' in shown and shown.index('Demo issue.') < shown.index('Comments')
+        assert shown.index('Markdown is formatted') < shown.index('Only developers can see') < shown.index('Token auth')
+        assert '**' not in shown and '[b]tags[/b] stays literal' in shown and '\x1b' not in shown
+        assert 'visible to Developers' in shown
+        assert pane.max_scroll_y > 0  # longer than the screen: it scrolls
+        await pilot.press('end')
+        assert pane.scroll_y == pane.max_scroll_y > 0
+        await pilot.press('s')
+        assert '**Markdown** is formatted' in details(app)
+        await pilot.press('s', 'escape')
+        assert app.screen.maximized is None and 'Comments · 3' in details(app)  # kept while DEMO-3 stays selected
+        client.fail = 1
+        await pilot.press('enter')
+        await settle(app, pilot)
+        assert 'Could not load the comments. YouTrack returned HTTP 500. Press r to retry.' in details(app)
+        assert 'Markdown is formatted' in details(app)  # what was read before stays
+        await pilot.press('r')  # on the expanded details, r reads the comments again
+        await settle(app, pilot)
+        assert 'Could not' not in details(app) and app.screen.maximized is pane
+        await pilot.press('c', *'Seen', 'enter')  # a new comment shows in the details at once
+        await settle(app, pilot)
+        assert 'Comments · 4, newest first' in details(app) and details(app).index('Seen') < details(app).index('Markdown')
+        client.hold = asyncio.Event()
+        await pilot.press('r')
+        await pilot.pause()
+        assert 'Comments · loading…' in details(app)
+        await pilot.press('escape', 'j', 'enter')  # DEMO-4 while DEMO-3's answer is on its way
+        await settle(app, pilot)
+        client.hold.set()
+        await settle(app, pilot)
+        assert app.selected['idReadable'] == 'DEMO-4' and 'Comments · none yet, or none you can see' in details(app)
+        assert 'Markdown' not in details(app)
+        await pilot.press('escape', 'k')
+        assert 'Comments' not in details(app)  # only the last expanded card keeps its comments
+
+
+async def test_backlog_details_expand_with_the_comments():
+    app = BoardApp(DemoClient())
+    async with app.run_test(size=(60, 20)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('B')
+        await settle(app, pilot)
+        assert 'Comments' not in details(app)
+        await pilot.press('enter')
+        await settle(app, pilot)
+        assert 'Comments · 1, newest first' in details(app) and 'keep that order' in details(app)
+        await pilot.press('escape', 'j', 'enter')
+        await settle(app, pilot)
+        assert 'Comments · none yet' in details(app) and 'keep that order' not in details(app)
+
+
 async def test_comments_api_reads_every_page_and_skips_deleted_comments():
     requests = []
     pages = [[{'id': 'a', 'created': 1, 'text': 'first'}, {'id': 'b', 'created': 3, 'deleted': True}],

@@ -1,6 +1,6 @@
 # Open merge requests linked to a story
 
-Status: implemented in both boards. YouTrack MR support ships in 0.1.2; GitLab Board ships separately as 0.1.0. The findings and design below were written before the code; results are at the end. Stage 1 is the GitLab board, stage 2 the YouTrack board. Researched on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), gitlab.liip.ch 19.4.2 (Community Edition), glab 1.115.0, GitLab's source at `master` commit `042d7c216cf9dee29ab0cd7a26804009e995b21e`, and track.liip.ch. Every live check was a GraphQL query or a REST GET.
+Status: implemented in both boards. YouTrack MR support ships in 0.1.2; GitLab Board ships separately as 0.1.0. Listing every open MR of a repository (`G`) and opening the issue an MR links (`i`) ship in YouTrack Board 0.1.3 and GitLab Board 0.1.1. The findings and design below were written before the code; results are at the end. Stage 1 is the GitLab board, stage 2 the YouTrack board. Researched on 2026-10-16 against GitLab.com 19.6.0-pre (Enterprise Edition), gitlab.liip.ch 19.4.2 (Community Edition), glab 1.115.0, GitLab's source at `master` commit `042d7c216cf9dee29ab0cd7a26804009e995b21e`, and track.liip.ch. Every live check was a GraphQL query or a REST GET.
 
 ## What the user asked for
 

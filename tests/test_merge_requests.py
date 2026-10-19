@@ -10,13 +10,13 @@ import pytest
 from textual.widgets import Input, OptionList, Static
 
 from gitlab_board import merge_requests as mrs
-from gitlab_board.client import Client, mentions
+from gitlab_board.client import Client, mentions, named
 from gitlab_board.demo import DemoClient
 from gitlab_board.glab import LOGIN, Glab, GlabError
 from gitlab_board.merge_requests import MergeRequestsScreen, repository
 from gitlab_board.target import TargetError
-from test_gitlab import FAKE, FakeGlab, demo_app, fake_glab, settle  # noqa: F401  (fake_glab is a fixture)
-from youtrack_board.app import BoardApp, Column, CommentDialog
+from test_gitlab import FAKE, FakeGlab, demo_app, fake_glab, settle, text  # noqa: F401  (fake_glab is a fixture)
+from youtrack_board.app import BoardApp, Column, CommentDialog, Picker
 from youtrack_board.demo import DemoClient as YouTrackDemo
 from youtrack_board.demo import demo_gitlab, demo_state
 from youtrack_board.prefs import Prefs
@@ -401,3 +401,165 @@ def test_the_package_ships_both_boards():
     assert project['project']['scripts'] == {'youtrack-board': 'youtrack_board.app:main', 'gitlab-board': 'gitlab_board.app:main'}
     for kind, build in project['tool']['hatch']['build']['targets'].items():
         assert {'youtrack_board', 'gitlab_board'} <= set(build['include']), kind
+
+
+# All open merge requests (G), and the issues an MR links (i)
+
+def ns(*nodes, more=None):
+    return {'ns': {'mergeRequests': {'pageInfo': {'hasNextPage': bool(more), 'endCursor': more}, 'nodes': list(nodes)}}}
+
+
+async def test_all_open_merge_requests_are_read_newest_first_page_by_page(monkeypatch):
+    fake = FakeGlab(GlabError("Field 'approvalsLeft' doesn't exist on type 'MergeRequest'"), ns(mr(3), mr(2), more='c1'),
+                    ns(mr(2), mr(1)))
+    found = await Client(HOST, fake).open_merge_requests({'kind': 'project', 'path': 'g/app'})
+    assert 'project(fullPath: "g/app") { mergeRequests(state: opened, sort: UPDATED_DESC, first: 50)' in fake.documents[1]
+    assert 'description' in fake.documents[1] and 'approvalsLeft' not in fake.documents[1]
+    assert 'after: "c1"' in fake.documents[2]
+    assert [m['iid'] for m in found['mrs']] == ['3', '2', '1'] and not found['more']  # !2, updated meanwhile, once
+    group = FakeGlab(ns())
+    assert await Client(HOST, group).open_merge_requests({'kind': 'group', 'path': 'g'}) == {'mrs': [], 'more': False}
+    assert 'group(fullPath: "g") { mergeRequests(state: opened, sort: UPDATED_DESC, includeSubgroups: true, first: 50)' \
+        in group.documents[0]
+    monkeypatch.setattr('gitlab_board.client.ALL_PAGES', 2)
+    capped = FakeGlab(ns(mr(1), more='a'), ns(mr(2), more='b'))
+    found = await Client(HOST, capped).open_merge_requests({'kind': 'project', 'path': 'g/app'})
+    assert len(found['mrs']) == 2 and found['more'] == 'only the 100 most recently updated are shown'
+    with pytest.raises(GlabError, match='no project g/gone'):
+        await Client(HOST, FakeGlab({'ns': None})).open_merge_requests({'kind': 'project', 'path': 'g/gone'})
+
+
+async def test_the_issues_an_mr_links_come_from_gitlab_closing_ones_first_once_each():
+    def rest(n, path):
+        return {'id': n, 'iid': n % 100, 'title': f'Issue {n}', 'references': {'full': f'{path}#{n % 100}'},
+                'web_url': f'https://{HOST}/{path}/-/issues/{n % 100}', 'state': 'opened'}
+    fake = FakeGlab([rest(101, 'g/app')], [rest(205, 'g/lib'), rest(101, 'g/app'), 'junk'])
+    found = await Client(HOST, fake).merge_request_issues(mr(4, 'g/app'))
+    assert [r[0] for r in fake.reads] == ['projects/g%2Fapp/merge_requests/4/closes_issues',
+                                          'projects/g%2Fapp/merge_requests/4/related_issues']
+    assert [(i['ref'], i['why'], i['id'], i['webUrl']) for i in found] == [
+        ('g/app#1', 'closes it when merged', 'gid://gitlab/Issue/101', f'https://{HOST}/g/app/-/issues/1'),
+        ('g/lib#5', 'mentions it', 'gid://gitlab/Issue/205', f'https://{HOST}/g/lib/-/issues/5')]
+
+
+def test_story_ids_are_found_for_the_given_projects_only():
+    found = named(['DEMO', 'OPS'], {'title': '[demo-3] Fix DEMO-10, not WEB-2', 'sourceBranch': 'DEMO-3-x',
+                                    'description': 'See OPS-07, ops-1 and XDEMO-4'})
+    assert found == {'DEMO-3': 'title, branch', 'DEMO-10': 'title', 'OPS-1': 'description'}
+
+
+async def test_gitlab_board_lists_all_open_merge_requests_and_opens_the_issue_one_links(monkeypatch):
+    monkeypatch.setattr(Glab, 'run', lambda *a, **k: pytest.fail('the demo ran glab'))
+    for size in ((80, 24), (60, 20)):
+        app, _ = demo_app()
+        async with app.run_test(size=size) as pilot:
+            await settle(app, pilot)
+            await pilot.press('G')
+            await settle(app, pilot)
+            screen = app.screen
+            assert isinstance(screen, MergeRequestsScreen) and 'most recently updated first' in screen.about
+            assert [mrs.reference(m, screen.home) for m in screen.mrs] == ['!1', '!2', '!4', '!5']  # newest first
+            assert [m['updatedAt'] for m in screen.mrs] == sorted((m['updatedAt'] for m in screen.mrs), reverse=True)
+            assert hint(screen).startswith('4 open') and 'i linked issue' in hint(screen)
+            assert screen.query_one('#mr-hint').region.bottom <= screen.query_one('#mr-dialog').region.bottom
+            await pilot.press('i')  # !1 closes #3, on this board: its card, expanded, with its comments
+            await settle(app, pilot)
+            assert not app.screen.is_modal and app.selected['reference'] == 'demo/portal#3'
+            assert app.screen.maximized is app.query_one('#details-pane') and app.focused is app.screen.maximized
+            assert 'Comments · 3' in text(app.query_one('#details', Static).content)
+            await pilot.press('escape')
+            assert isinstance(app.focused, Column) and app.selected['reference'] == 'demo/portal#3'
+
+
+async def test_an_mr_linking_several_issues_offers_them_and_one_off_the_board_opens_in_the_browser(monkeypatch):
+    opened = []
+    monkeypatch.setattr('webbrowser.open', lambda url: opened.append(url) or True)
+    app, _ = demo_app()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('right', 'right', 'down', 'g', 'down', 'down')  # #3's MRs: demo/api!1 closes api#1 too
+        await settle(app, pilot)
+        assert mrs.reference(app.screen.current(), app.screen.home) == 'demo/api!1'
+        await pilot.press('i')
+        await settle(app, pilot)
+        assert isinstance(app.screen, Picker)
+        assert [c[0] for c in app.screen.choices] == [0, 1]
+        assert 'demo/api#1' in str(app.screen.choices[0][1]) and 'closes it when merged' in str(app.screen.choices[0][1])
+        assert 'demo/portal#3' in str(app.screen.choices[1][1]) and 'mentions it' in str(app.screen.choices[1][1])
+        await pilot.press('enter')  # api#1 is not on demo/portal's board
+        await settle(app, pilot)
+        assert opened == [f'https://{HOST}/demo/api/-/issues/1'] and not app.screen.is_modal
+        assert app.selected['reference'] == 'demo/portal#3' and isinstance(app.focused, Column)
+
+
+async def test_all_merge_requests_of_a_group_board_and_mrs_that_link_nothing_or_fail():
+    client = DemoClient()
+    errors = [GlabError('glab: 500 Internal Server Error (HTTP 500)')]
+    original = client.merge_request_issues
+
+    async def flaky(mr):
+        if errors:
+            raise errors.pop()
+        return await original(mr)
+    client.merge_request_issues = flaky
+    app, _ = demo_app(f'https://{HOST}/groups/demo/-/boards/3', client=client)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('G')
+        await settle(app, pilot)
+        screen = app.screen
+        assert [mrs.reference(m, screen.home) for m in screen.mrs] == [
+            'demo/portal!1', 'demo/portal!2', 'demo/api!1', 'demo/portal!4', 'demo/portal!5', 'demo/api!2', 'demo/api!3']
+        assert 'and its subgroups' in screen.about
+        await pilot.press('i')
+        await settle(app, pilot)
+        assert 'Could not read the issues demo/portal!1 links' in hint(screen) and screen.query_one('#mr-hint').has_class('error')
+        await pilot.press('end', 'i')  # demo/api!3 links no issue
+        await settle(app, pilot)
+        assert app.screen is screen and hint(screen).startswith('demo/api!3 links no issue you can see')
+        assert not screen.query_one('#mr-hint').has_class('error')
+
+
+async def test_youtrack_board_lists_every_open_mr_of_the_repository_and_opens_the_story_it_names(monkeypatch):
+    monkeypatch.setattr(Glab, 'run', lambda *a, **k: pytest.fail('the demo ran glab'))
+    opened = []
+    monkeypatch.setattr('webbrowser.open', lambda url: opened.append(url) or True)
+    for size in ((80, 24), (60, 20)):
+        client = YouTrackDemo()
+        app = BoardApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab)
+        async with app.run_test(size=size) as pilot:
+            await settle(app, pilot)
+            await pick(app, pilot, 'DEMO-1')
+            await pilot.press('G')
+            await settle(app, pilot)
+            screen = app.screen
+            assert isinstance(screen, MergeRequestsScreen) and screen.home == 'demo/portal'
+            assert [(mrs.reference(m, screen.home), m['why']) for m in screen.mrs] == [
+                ('!1', 'Names DEMO-3 in its title, branch'), ('!2', 'Names DEMO-3 in its description'),
+                ('!4', 'Names DEMO-1 in its branch'), ('!5', 'Names DEMO-10 in its branch')]
+            assert hint(screen).startswith('4 open') and 'i linked issue' in hint(screen) and 'u repository' in hint(screen)
+            await pilot.press('i')  # DEMO-3 is on the board: its card, expanded, with its comments
+            await settle(app, pilot)
+            assert app.selected['idReadable'] == 'DEMO-3' and app.screen.maximized is app.query_one('#details-pane')
+            assert 'Comments · 3' in text(app.query_one('#details', Static).content)
+            await pilot.press('escape', 'G', 'end', 'i')  # DEMO-10 is not on the board: YouTrack's page
+            await settle(app, pilot)
+            assert opened[-1] == f'{client.base_url}/issue/DEMO-10' and not app.screen.is_modal
+            assert app.selected['idReadable'] == 'DEMO-3'
+            assert app.named_stories({'title': 'WEB-2 and DEMO-1'}, HOST, 'demo/portal') == {'DEMO-1': 'title'}
+
+
+async def test_youtrack_all_merge_requests_need_a_story_or_a_project():
+    client = YouTrackDemo()
+    app = BoardApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('slash', *'nothing matches', 'enter')
+        await settle(app, pilot)
+        app.set_focus(None)  # no card, and the filter keeps focus when nothing matches
+        await pilot.press('G')
+        assert not app.screen.is_modal and 'Select a story, or choose a project' in str(app.query_one('#status', Static).content)
+        app.prefs.data['project'] = '0-1'  # DEMO in scope: its repository
+        await pilot.press('G')
+        await settle(app, pilot)
+        assert isinstance(app.screen, MergeRequestsScreen) and len(app.screen.mrs) == 4
