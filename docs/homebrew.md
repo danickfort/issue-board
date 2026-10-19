@@ -22,7 +22,7 @@ Skip login when already signed in. The formula uses Homebrew's built-in authenti
 
 On recent Homebrew, sandboxed Git downloads receive `HOMEBREW_GITHUB_API_TOKEN` as `GH_TOKEN` through the configured gh helper; an arbitrary token environment variable is not enough. Homebrew's [private download guidance](https://docs.brew.sh/FAQ#how-do-i-authenticate-private-git-source-downloads) describes this behavior. Use an up-to-date Homebrew. The tap itself is cloned using your Git credentials.
 
-The app uses an isolated Python 3.14 environment on macOS. It needs no uv or checkout at runtime. The formula test runs the installed demo headlessly and verifies an actual board and its issues without credentials, config writes or network requests.
+The formula links only `youtrack-board`; the package's `gitlab-board` command, for source checkouts, is left to the [GitLab Board](https://github.com/krabilousse/gitlab-board) formula, so both can be installed side by side. 0.1.3 linked both, which conflicts with GitLab Board: Homebrew then leaves `youtrack-board` unlinked; upgrade to 0.1.4 or later. The app uses an isolated Python 3.14 environment on macOS. It needs no uv or checkout at runtime. The formula test runs the installed demo headlessly and verifies an actual board and its issues without credentials, config writes or network requests.
 
 ## Update and uninstall
 

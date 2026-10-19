@@ -44,7 +44,11 @@ def formula(version, source_url, checksum, resources, homepage, revision=None):
 
 {blocks}
   def install
-    virtualenv_install_with_resources
+    venv = virtualenv_create(libexec, "python3.14")
+    venv.pip_install resources
+    venv.pip_install buildpath
+    # Only this command: the package's gitlab-board, for source checkouts, is the GitLab Board formula's to install.
+    bin.install_symlink libexec/"bin/youtrack-board"
   end
 
   def caveats
