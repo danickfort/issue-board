@@ -4,26 +4,26 @@ A keyboard-driven GitLab issue board in the terminal. It shares the YouTrack boa
 
 ## Installation
 
-The application and tap repositories are private. Your GitHub account needs access to both `krabilousse/gitlab-board` and `krabilousse/homebrew-gitlab`.
+GitLab Board is part of [Issue Board](../README.md#installation), published in the private `krabilousse/issue-board` repository. Install the unified application, then run `issueboard` in a project folder and choose GitLab, or run `gitlab-board` directly.
 
 ```sh
-brew install gh
+brew install gh glab
 gh auth login
 gh auth setup-git
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/gitlab/gitlab-board
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/youtrack/issueboard
 ```
 
-Skip GitHub login if already signed in with access. Homebrew installs Python and the official GitLab CLI, `glab`; no uv or source checkout is needed to run the app. This package installs only `gitlab-board` and can coexist with YouTrack Board.
+Your GitHub account needs access to `krabilousse/issue-board` and the existing `krabilousse/homebrew-youtrack` tap. Skip GitHub login if already signed in with access. If a standalone YouTrack Board or GitLab Board formula is installed, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs both commands. Preferences and credentials are kept.
 
 To update or uninstall:
 
 ```sh
 brew update
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade krabilousse/gitlab/gitlab-board
-brew uninstall gitlab-board
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade krabilousse/youtrack/issueboard
+brew uninstall issueboard
 ```
 
-Uninstalling keeps local preferences and glab authentication. Start inside your code repository with `gitlab-board`, or pass a board URL from any directory.
+Uninstalling keeps local preferences and glab authentication. Start inside your code repository with `issueboard` or `gitlab-board`, or pass a board URL to `gitlab-board` from any directory.
 
 Design, GitLab behavior, and limits are in [docs/research/gitlab-board.md](research/gitlab-board.md).
 

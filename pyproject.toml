@@ -1,7 +1,7 @@
 [project]
-name = "youtrack-board"
-version = "0.1.6"
-description = "A small terminal Agile board for YouTrack"
+name = "issueboard"
+version = "0.2.0"
+description = "A keyboard-driven terminal issue board for YouTrack and GitLab"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -9,6 +9,7 @@ requires-python = ">=3.12"
 dependencies = ["textual>=1.0,<9", "httpx>=0.28,<1", "keyring>=25,<26"]
 
 [project.scripts]
+issueboard = "issueboard.app:main"
 youtrack-board = "youtrack_board.app:main"
 gitlab-board = "gitlab_board.app:main"
 
@@ -22,13 +23,13 @@ dev = ["pytest>=8", "pytest-asyncio>=0.25"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-# Both boards: youtrack-board, and gitlab-board, whose package the YouTrack board's merge requests panel (g) uses too.
+# issueboard opens either board; youtrack-board and gitlab-board remain for existing scripts and habits.
 [tool.hatch.build.targets.wheel]
-include = ["youtrack_board", "gitlab_board"]
+include = ["issueboard", "youtrack_board", "gitlab_board"]
 
 [tool.hatch.build.targets.sdist]
-include = ["youtrack_board", "gitlab_board", "pyproject.toml", "README.md", "LICENSE"]
+include = ["issueboard", "youtrack_board", "gitlab_board", "pyproject.toml", "README.md", "LICENSE"]
 
 [project.urls]
-Homepage = "https://github.com/krabilousse/youtrack-board"
-Repository = "https://github.com/krabilousse/youtrack-board"
+Homepage = "https://github.com/krabilousse/issue-board"
+Repository = "https://github.com/krabilousse/issue-board"

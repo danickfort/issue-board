@@ -1616,7 +1616,7 @@ class BoardApp(InlineComments, App):
         await self.client.close()
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(
         description='A small YouTrack Agile board TUI',
         epilog='Credentials: YOUTRACK_URL and YOUTRACK_TOKEN if set, else the saved ones (URL in a config file, token '
@@ -1629,7 +1629,7 @@ def main():
     modes.add_argument('--auth-status', action='store_true', help='check the credential source and account without opening the board')
     parser.add_argument('--open', action='store_true', help='with --setup, open the instance token page in your browser')
     parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.open and not args.setup:
         parser.error('--open requires --setup')
     if args.demo:

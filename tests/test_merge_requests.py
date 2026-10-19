@@ -395,12 +395,13 @@ def test_the_youtrack_board_starts_without_gitlab_code():
     assert out.strip() == '[]'
 
 
-def test_the_package_ships_both_boards():
+def test_the_package_ships_issueboard_and_both_boards():
     """Built artifacts (wheel and sdist) hold the whole GitLab package: g imports part of it, gitlab-board the rest."""
     project = tomllib.loads((Path(__file__).parent.parent / 'pyproject.toml').read_text())
-    assert project['project']['scripts'] == {'youtrack-board': 'youtrack_board.app:main', 'gitlab-board': 'gitlab_board.app:main'}
+    assert project['project']['scripts'] == {'issueboard': 'issueboard.app:main', 'youtrack-board': 'youtrack_board.app:main',
+                                            'gitlab-board': 'gitlab_board.app:main'}
     for kind, build in project['tool']['hatch']['build']['targets'].items():
-        assert {'youtrack_board', 'gitlab_board'} <= set(build['include']), kind
+        assert {'issueboard', 'youtrack_board', 'gitlab_board'} <= set(build['include']), kind
 
 
 # All open merge requests (G), and the issues an MR links (i)

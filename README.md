@@ -1,24 +1,27 @@
-# YouTrack Board
+# Issue Board
 
-A small keyboard-driven Agile board TUI built with Python and Textual.
+A keyboard-driven issue board in the terminal, for YouTrack Agile boards and GitLab issue boards, built with Python and Textual. One command, `issueboard`, opens the right board for the project folder you are in. It contains YouTrack Board and [GitLab Board](docs/gitlab-board.md), whose commands `youtrack-board` and `gitlab-board` keep working with all their options.
 
 ## Installation
 
-The repository and Homebrew tap are private. Your GitHub account needs access to both `krabilousse/youtrack-board` and `krabilousse/homebrew-youtrack`.
+The repository and Homebrew tap are private. Your GitHub account needs access to both `krabilousse/issue-board` and `krabilousse/homebrew-youtrack`.
 
 ```sh
 brew install gh
 gh auth login
 gh auth setup-git
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/youtrack/youtrack-board
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/youtrack/issueboard
 ```
+
+The Homebrew tap retains its existing `homebrew-youtrack` name. If YouTrack Board or GitLab Board is installed with Homebrew, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Credentials, preferences and saved state are kept. GitLab boards also need glab: `brew install glab`.
 
 Skip `gh auth login` if already signed in to an account with access. The token is passed through the environment for the download; it is never embedded in the formula. Homebrew installs an isolated Python environment, so running the app needs no uv or source checkout.
 
 ```sh
-youtrack-board
-youtrack-board --demo
-youtrack-board --setup --open
+issueboard                    # the board of this project folder; asks the first time
+issueboard --setup            # choose this folder's tracker and board again
+issueboard --demo youtrack    # or: issueboard --demo gitlab
+youtrack-board --setup --open # replace the saved YouTrack connection
 youtrack-board --auth-status
 ```
 
@@ -26,19 +29,34 @@ Update and remove it with:
 
 ```sh
 brew update
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade krabilousse/youtrack/youtrack-board
-brew uninstall youtrack-board
+HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade krabilousse/youtrack/issueboard
+brew uninstall issueboard
 ```
 
 Uninstalling preserves your preferences and credentials. Run `youtrack-board --logout` before uninstalling to also remove the app's saved token. Existing MCP credentials are never changed. [Homebrew release and development instructions](docs/homebrew.md).
+
+## One board per project folder
+
+The first time `issueboard` starts in a folder, it asks whether the folder's issues are in YouTrack or GitLab, then sets that up and remembers the board:
+
+- **The folder** is the root of the Git checkout you are in, so all its subfolders share one choice, and each Git worktree has its own. Outside Git, it is the current folder.
+- **The suggestion** comes from local clues only, each listed with the question: YouTrack Board already showing merge requests of this checkout's GitLab repository, GitLab Board having opened this project's boards, or a branch name with a YouTrack-style issue ID such as `WEB-12`. A GitLab remote alone suggests nothing: YouTrack projects often keep their code on GitLab. When the clues disagree, or there are none, nothing is preselected. Either way you confirm the choice, with Enter for a suggestion or a number.
+- **YouTrack** signs in exactly like `youtrack-board` ([credentials](#connect-to-youtrack)), then asks for a project (or All projects) and a board.
+- **GitLab** offers the checkout's GitLab remotes, or a project, group or board URL you type, then checks that glab is signed in to that host. If it is not, it offers to run `glab auth login --hostname <host>`, which keeps the token in glab. Then it asks for the board.
+- **Nothing is saved** until setup succeeds. Ctrl+C, Ctrl+D, a declined sign-in or a failed check leaves the folder's previous choice, if any, as it was.
+
+Later starts in that folder open the saved board directly. `issueboard --setup` asks again, with the current tracker preselected. Choices are kept in `$XDG_CONFIG_HOME/issueboard/directories.json` (or `~/.config/issueboard/directories.json`), keyed by folder path. Nothing is written to the project. They hold board IDs and URLs, never tokens. If that file is damaged, `issueboard` stops and names it rather than overwriting it. Without an interactive terminal, `issueboard` never prompts: in a folder without a choice, or with `--setup`, it exits and names `youtrack-board` and `gitlab-board` as alternatives.
 
 ## Try the demo
 
 After installing with Homebrew, run:
 
 ```sh
-youtrack-board --demo
+issueboard --demo youtrack
+issueboard --demo gitlab
 ```
+
+`youtrack-board --demo` and `gitlab-board --demo` are the same demos. The YouTrack demo is described here, the GitLab demo in [GitLab Board](docs/gitlab-board.md).
 
 No YouTrack account or credentials are needed. To run from a source checkout instead, see [Development](#development).
 
@@ -249,17 +267,11 @@ It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devporta
 
 ## GitLab Board
 
-GitLab Board has its own private [repository](https://github.com/krabilousse/gitlab-board) and Homebrew tap. With GitHub authentication configured as above:
-
-```sh
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install krabilousse/gitlab/gitlab-board
-```
-
-Run `gitlab-board` inside a repository with a GitLab remote, or `gitlab-board --demo` to explore offline. It installs separately from YouTrack Board. [Installation and usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
+Issue Board includes GitLab Board. Choose GitLab for a folder in `issueboard`, or run `gitlab-board` inside a repository with a GitLab remote, or `gitlab-board --demo` to explore offline. Its separate [repository](https://github.com/krabilousse/gitlab-board) and `gitlab-board` formula are superseded by Issue Board. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
 
 ## Diagnostic logs
 
-Start with `--verbose` to show a scrollable log panel (`youtrack-board --verbose` or `gitlab-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
+Start with `--verbose` to show a scrollable log panel (`issueboard --verbose`, `youtrack-board --verbose` or `gitlab-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
 
 The panel records app status, warnings and errors, and network request methods, endpoints, completion times and failures. GitLab requests show glab success/failure and HTTP status when glab supplies it; GraphQL errors are logged separately. Authentication headers, tokens, query values, request/response bodies and raw glab stderr are omitted. Logs stay in memory with bounded history (up to 1,000 rendered lines); nothing is written to disk. Without `--verbose`, no diagnostic history is collected. Startup authentication happens before the panel opens and still reports failures in the terminal.
 
@@ -271,11 +283,11 @@ From the repository directory:
 
 ```sh
 uv sync
-uv run youtrack-board --demo  # Try the demo from source
-uv run youtrack-board         # Connect to YouTrack from source
+uv run issueboard --demo youtrack  # Try a demo from source
+uv run issueboard                  # Open this folder's board from source
 uv run pytest -q
 ```
 
-For the other commands above, prefix `youtrack-board` with `uv run` when running from source.
+For the other commands above, prefix them with `uv run` when running from source.
 
-Tests drive the actual TUI in headless mode: keyboard navigation, moving a demo card, commenting, reading comments (order, visibility, literal markup, control characters, errors and retry, empty threads, late answers), filtering, keeping the selection across refreshes, overlapping renders, 80×24 and 60×20 layouts, and retrying after a load error. New in this version: assigning (who is listed, ordering, unassigning, multi-user and permission errors), board recency and resume, project scope without reloads, discarding a slower board response, and live, per-board view options. Saved state is checked for keeping other servers' data, atomic writes, invalid and corrupt files, and demo isolation. Credential tests replace the credential store, the prompts and YouTrack with fakes, and never read your real keychain, MCP files or environment. They cover the source order, environment-only starts, incomplete environment pairs, URL and token pairs that are never mixed, MCP discovery limits, setup success, rejection, the three-try limit and cancelling, refused plaintext and locked stores, rejected saved tokens, choosing between several entries, logout, private config files, tokens absent from output, and `--demo` and `--help` that never look for credentials. Mocked API tests check the assignee requests, pagination and payloads. Backlog tests cover the saved-search source and order, paging, the refusal to load a query-less search, missing, empty and forbidden backlogs with retry, local search, details, read-only comments, inert board keys, late and overlapping pages, the board state after returning, and 60×20 rows. Auto-refresh tests call the timer's tick directly, so they do not depend on timing. They check that changes appear with the selection, focus, swimlane scroll, scope and source mode kept, and that an unchanged board is not redrawn. They also cover the per-board toggle and its saved state, waiting behind dialogs, comments, the backlog, the view dialog, filter typing, details and saves, one refresh at a time, and dropped answers after a sprint or board switch or under a dialog. Failures keep the board, back off and warn once. The indicator fits at 60 columns, and one test runs the real timer. Merge request tests (`tests/test_merge_requests.py`) cover `g` on both boards: matching, the repository prompt and its saved choice, glab's argv and stdin through a fake `glab`, errors, cancelling and layouts. Startup tests (`tests/test_startup.py`) use real temporary Git repositories to cover finding a checkout's GitLab project, each project's default board, and linking a YouTrack project's repository from the checkout; tests start in an empty folder and never read this checkout's remotes or your SSH config. No live instance is required. Live-server compatibility and workflow behavior still need checking against your instance.
+Tests drive the actual TUI in headless mode: keyboard navigation, moving a demo card, commenting, reading comments (order, visibility, literal markup, control characters, errors and retry, empty threads, late answers), filtering, keeping the selection across refreshes, overlapping renders, 80×24 and 60×20 layouts, and retrying after a load error. New in this version: assigning (who is listed, ordering, unassigning, multi-user and permission errors), board recency and resume, project scope without reloads, discarding a slower board response, and live, per-board view options. Saved state is checked for keeping other servers' data, atomic writes, invalid and corrupt files, and demo isolation. Credential tests replace the credential store, the prompts and YouTrack with fakes, and never read your real keychain, MCP files or environment. They cover the source order, environment-only starts, incomplete environment pairs, URL and token pairs that are never mixed, MCP discovery limits, setup success, rejection, the three-try limit and cancelling, refused plaintext and locked stores, rejected saved tokens, choosing between several entries, logout, private config files, tokens absent from output, and `--demo` and `--help` that never look for credentials. Mocked API tests check the assignee requests, pagination and payloads. Backlog tests cover the saved-search source and order, paging, the refusal to load a query-less search, missing, empty and forbidden backlogs with retry, local search, details, read-only comments, inert board keys, late and overlapping pages, the board state after returning, and 60×20 rows. Auto-refresh tests call the timer's tick directly, so they do not depend on timing. They check that changes appear with the selection, focus, swimlane scroll, scope and source mode kept, and that an unchanged board is not redrawn. They also cover the per-board toggle and its saved state, waiting behind dialogs, comments, the backlog, the view dialog, filter typing, details and saves, one refresh at a time, and dropped answers after a sprint or board switch or under a dialog. Failures keep the board, back off and warn once. The indicator fits at 60 columns, and one test runs the real timer. Merge request tests (`tests/test_merge_requests.py`) cover `g` on both boards: matching, the repository prompt and its saved choice, glab's argv and stdin through a fake `glab`, errors, cancelling and layouts. Startup tests (`tests/test_startup.py`) use real temporary Git repositories to cover finding a checkout's GitLab project, each project's default board, and linking a YouTrack project's repository from the checkout; tests start in an empty folder and never read this checkout's remotes or your SSH config. Issue Board tests (`tests/test_issueboard.py`) cover the folder of subfolders and worktrees, the clues and their ambiguity, first-run setup for both trackers with fake prompts, cancelling and failed sign-ins that keep the saved choice, reopening without prompts, `--setup`, starts without a terminal, a damaged choices file, and both demos without credentials or glab. No live instance is required. Live-server compatibility and workflow behavior still need checking against your instance.

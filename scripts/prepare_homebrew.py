@@ -31,10 +31,10 @@ def formula(version, source_url, checksum, resources, homepage, revision=None):
     sha256 {json.dumps(sha)}
   end
 ''' for name, url, sha in resources)
-    return f'''class YoutrackBoard < Formula
+    return f'''class Issueboard < Formula
   include Language::Python::Virtualenv
 
-  desc "Keyboard-driven YouTrack Kanban board"
+  desc "Keyboard-driven issue board for YouTrack and GitLab"
 {homepage_line}{source_line}
   version {json.dumps(version)}
   license "MIT"
@@ -42,32 +42,39 @@ def formula(version, source_url, checksum, resources, homepage, revision=None):
   depends_on :macos
   depends_on "python@3.14"
 
+  conflicts_with "youtrack-board", because: "Issue Board installs the youtrack-board command too"
+  conflicts_with "gitlab-board", because: "Issue Board installs the gitlab-board command too"
+
 {blocks}
   def install
     venv = virtualenv_create(libexec, "python3.14")
     venv.pip_install resources
     venv.pip_install buildpath
-    # Only this command: the package's gitlab-board, for source checkouts, is the GitLab Board formula's to install.
-    bin.install_symlink libexec/"bin/youtrack-board"
+    bin.install_symlink libexec/"bin/issueboard", libexec/"bin/youtrack-board", libexec/"bin/gitlab-board"
   end
 
   def caveats
     <<~EOS
-      Run youtrack-board to connect, or youtrack-board --demo to explore.
-      Tokens are stored in the OS keychain; existing YouTrack MCP credentials can be reused.
-      Run youtrack-board --setup --open to create or replace your connection.
+      Run issueboard in a project folder: it asks once whether the folder uses YouTrack or GitLab.
+      Try it with issueboard --demo youtrack or issueboard --demo gitlab.
+      YouTrack tokens stay in the OS keychain; GitLab needs glab (brew install glab) and its own sign-in.
+      youtrack-board and gitlab-board still work as before, with your saved credentials and preferences.
     EOS
   end
 
   test do
+    assert_match "--setup", shell_output("#{{bin}}/issueboard --help")
     assert_match "--setup", shell_output("#{{bin}}/youtrack-board --help")
+    assert_match "--demo", shell_output("#{{bin}}/gitlab-board --help")
     system libexec/"bin/python", "-c", <<~PYTHON
       import asyncio
       from youtrack_board.app import BoardApp
       from youtrack_board.demo import DemoClient
+      from gitlab_board.app import GitLabApp, Prefs
+      from gitlab_board.demo import DemoClient as GitLabDemo, demo_state
+      from gitlab_board.target import parse
       from textual.worker import WorkerCancelled
-      async def verify():
-          app = BoardApp(DemoClient())
+      async def verify(app):
           async with app.run_test(size=(80, 24)) as pilot:
               for _ in range(8):
                   await pilot.pause()
@@ -77,7 +84,9 @@ def formula(version, source_url, checksum, resources, homepage, revision=None):
                       pass
               assert app.board_data, "Demo board did not load"
               assert app.issues_data, "Demo issues did not load"
-      asyncio.run(verify())
+      asyncio.run(verify(BoardApp(DemoClient())))
+      client, state = GitLabDemo(), demo_state()
+      asyncio.run(verify(GitLabApp(client, Prefs(None, client.host, state), start=parse(state["project"], client.host))))
     PYTHON
   end
 end
@@ -116,9 +125,9 @@ def main():
         source = next(file for file in release['urls'] if file['packagetype'] == 'sdist')
         resources.append((name, source['url'], source['digests']['sha256']))
     run('uv', 'build', '--sdist', '--out-dir', str(output / 'releases'))
-    archive = output / 'releases' / f'youtrack_board-{metadata["version"]}.tar.gz'
+    archive = output / 'releases' / f'issueboard-{metadata["version"]}.tar.gz'
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-    target = output / 'Formula/youtrack-board.rb'
+    target = output / 'Formula/issueboard.rb'
     target.parent.mkdir(exist_ok=True)
     target.write_text(formula(metadata['version'], args.url or archive.as_uri(), checksum, resources,
                               args.homepage or metadata.get("urls", {}).get("Homepage"), revision))

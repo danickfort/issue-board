@@ -772,7 +772,7 @@ class GitLabApp(BoardApp):
             status(f'No browser available. Open {url}', error=True)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='gitlab-board', description='A keyboard-driven GitLab issue board in the terminal',
         epilog='Requests run through the GitLab CLI (glab) with its own sign-in: glab auth login --hostname <host>. '
@@ -785,7 +785,7 @@ def main():
     modes.add_argument('--demo', action='store_true', help='try with in-memory sample data; runs no glab, saves nothing')
     modes.add_argument('--auth-status', action='store_true', help='check glab and its sign-in for the host, then exit')
     parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         start = target.parse(args.url, DEMO_HOST if args.demo else args.hostname or 'gitlab.com') if args.url else None
         if start:
