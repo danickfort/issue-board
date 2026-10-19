@@ -15,10 +15,11 @@ from gitlab_board.remotes import NoRemote, Remote
 from gitlab_board.target import Target
 from test_gitlab import FAKE, settle
 from test_merge_requests import pick
-from youtrack_board.app import BoardApp, CommentDialog, Picker
+from issueboard.widgets import CommentDialog, Picker
+from youtrack_board.app import BoardApp
 from youtrack_board.demo import DemoClient as YouTrackDemo
 from youtrack_board.demo import demo_gitlab
-from youtrack_board.prefs import Prefs as YouTrackPrefs
+from issueboard.prefs import Prefs as YouTrackPrefs
 
 HOST = 'gitlab.example.com'
 TOKEN = 'glpat-abcdefghijklmnopqrstuvwx'

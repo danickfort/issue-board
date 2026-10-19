@@ -17,7 +17,7 @@ from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
 from .client import Client, YouTrackError, check_url
-from .prefs import write_json
+from issueboard.prefs import write_json
 
 SERVICE = 'youtrack-board'
 # keyring backends that keep secrets in the OS store. Others, such as keyrings.alt's plaintext file, are refused.

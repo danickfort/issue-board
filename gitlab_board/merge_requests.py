@@ -15,8 +15,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Label, OptionList, Static
 from textual.widgets.option_list import Option
 
-from youtrack_board.app import Picker, plain
-from youtrack_board.diagnostics import LOGGER
+from issueboard.widgets import Picker, plain
+from issueboard.diagnostics import LOGGER
 
 from . import target
 from .glab import GlabError

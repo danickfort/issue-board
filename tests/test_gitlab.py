@@ -13,7 +13,7 @@ from gitlab_board.app import AskDialog, GitLabApp, ListScreen, NotesScreen, Pref
 from gitlab_board.client import Client, Enum, board_input, describe_move, literal, move_effects
 from gitlab_board.demo import BOARDS, DemoClient, demo_state
 from gitlab_board.glab import Glab, GlabError
-from youtrack_board.app import Column, Picker
+from issueboard.widgets import Column, Picker
 
 SAMPLE = ('https://gitlab.com/geocity/geocity/-/boards/11511337'
           '?milestone_title=Sprint+9&label_name[]=PolCo&milestone_title=Sprint+10#/')

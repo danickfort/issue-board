@@ -23,7 +23,8 @@ from youtrack_board import app as youtrack_app
 from youtrack_board import credentials
 from youtrack_board.client import Client as YouTrack
 from youtrack_board.client import YouTrackError
-from youtrack_board.prefs import default_path, write_json
+from .prefs import default_path, write_json
+from .widgets import Picker, plain
 
 BACKENDS = {'youtrack': 'YouTrack', 'gitlab': 'GitLab'}
 ISSUE_ID = re.compile(r'(?<![A-Za-z0-9])[A-Z][A-Z0-9_]*-\d+')  # a YouTrack issue ID such as WEB-12
@@ -94,7 +95,7 @@ def evidence(cwd):
         found = []
     clues = {'youtrack': [], 'gitlab': []}
     urls = {f'https://{r.host}/{r.path}'.casefold(): r for r in found}
-    for server, section in read_state(default_path()).items():
+    for server, section in read_state(default_path('youtrack-board')).items():
         repos = section.get('repos') if isinstance(section, dict) else None
         for repo in repos.values() if isinstance(repos, dict) else ():
             if isinstance(repo, str) and repo.casefold() in urls:
@@ -137,9 +138,9 @@ class SetupPicker(App):
         self.title, self.options, self.default = title, options, default
 
     def on_mount(self):
-        choices = [(n, Text(youtrack_app.plain(label)), youtrack_app.plain(label), False)
+        choices = [(n, Text(plain(label)), plain(label), False)
                    for n, (_, label) in enumerate(self.options)]
-        self.push_screen(youtrack_app.Picker(self.title, choices, self.default, fuzzy=True), self.exit)
+        self.push_screen(Picker(self.title, choices, self.default, fuzzy=True), self.exit)
 
 
 def pick(title, options, default=None):
@@ -262,7 +263,7 @@ def open_youtrack(choice, verbose, signed=None):
             '(or set YOUTRACK_URL and YOUTRACK_TOKEN for it), or issueboard --setup to pick a board on '
             f'{account.url} for this folder.')
     client = YouTrack(account.url, account.token)
-    prefs = youtrack_app.Prefs(default_path(), client.base_url)
+    prefs = youtrack_app.Prefs(default_path('youtrack-board'), client.base_url)
     prefs.data['project'] = choice.get('project') if isinstance(choice.get('project'), str) else None
     prefs.visit(choice['board'])  # the most recently opened board in the scope is the one that opens
     youtrack_app.BoardApp(client, prefs, connection, cwd=os.curdir, verbose=verbose).run()

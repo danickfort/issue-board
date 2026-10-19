@@ -1,6 +1,6 @@
-"""YouTrack Markdown as a Rich renderable: Rich's Markdown, fed by markdown-it's CommonMark parser.
+"""Shared Markdown as a Rich renderable: Rich's Markdown, fed by markdown-it's CommonMark parser.
 
-A few token fixes make it read like YouTrack does. What a terminal cannot show (images, attachments, diagrams, math,
+Token fixes keep images, checklists and raw HTML readable in a terminal. What a terminal cannot show (images, attachments, diagrams, math,
 HTML) stays as readable text or source. Nothing is fetched and no link is followed or made clickable.
 See docs/research/markdown-support.md.
 """

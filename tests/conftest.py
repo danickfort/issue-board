@@ -24,5 +24,5 @@ def isolated(monkeypatch, tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def no_timed_refresh(monkeypatch):
-    """A slow test must not be refreshed under its feet: tests call BoardApp.tick() themselves."""
-    monkeypatch.setattr('youtrack_board.app.BoardApp.REFRESH', 3600)
+    """A slow test must not be refreshed under its feet: tests call tick() themselves."""
+    monkeypatch.setattr('issueboard.board.BoardView.REFRESH', 3600)

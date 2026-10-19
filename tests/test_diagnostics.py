@@ -7,10 +7,11 @@ from gitlab_board.demo import DemoClient as GitLabDemo, demo_state
 from gitlab_board.target import parse
 from test_board import settle
 from test_gitlab import fake_glab
-from youtrack_board.app import BoardApp, CommentDialog
+from issueboard.widgets import CommentDialog
+from youtrack_board.app import BoardApp
 from youtrack_board.client import Client, YouTrackError
 from youtrack_board.demo import DemoClient
-from youtrack_board.diagnostics import LOGGER, LogBuffer, LogPanel
+from issueboard.diagnostics import LOGGER, LogBuffer, LogPanel
 
 
 @pytest.fixture

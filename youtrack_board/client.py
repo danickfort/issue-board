@@ -7,7 +7,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
-from .diagnostics import LOGGER
+from issueboard.diagnostics import LOGGER
 
 ISSUE_FIELDS = "id,idReadable,summary,description,project(id,shortName),customFields(id,name,$type,value(id,name,login))"
 BOARD_FIELDS = ("id,name,currentSprint(id),columnSettings(field(name),columns(presentation,ordinal,fieldValues(name))),"

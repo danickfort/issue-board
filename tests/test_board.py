@@ -8,11 +8,11 @@ from rich.console import Console
 from rich.text import Text
 from textual.widgets import Input, OptionList, Select, Static
 
-from youtrack_board.app import (BacklogScreen, BoardApp, Card, Column, CommentDialog, CommentsScreen, More, Picker, Row,
-                                ViewDialog, main, names)
+from issueboard.widgets import Column, CommentDialog, More, Picker, ViewDialog
+from youtrack_board.app import BacklogScreen, BoardApp, Card, CommentsScreen, Row, main, names
 from youtrack_board.client import ISSUE_FIELDS, Client, YouTrackError, group_issues
 from youtrack_board.demo import DemoClient
-from youtrack_board.prefs import Prefs
+from issueboard.prefs import Prefs
 
 
 async def settle(app, pilot):
@@ -956,7 +956,7 @@ async def test_project_scope_on_swimlanes_says_so_and_x_shows_everything_again()
 
 
 def test_markdown_renders_youtrack_text_readably_and_never_as_live_content():
-    from youtrack_board.markup import markdown
+    from issueboard.markup import markdown
     text = rendered(markdown(
         '## Steps\nfirst line\nsecond<br/>third\n\n* [x] **done**\n* [ ] open\n\n> quoted\n\n'
         '| A | B |\n| - | - |\n| `x` | y |\n\n```mermaid\ngraph TD; A-->B\n```\n\n'

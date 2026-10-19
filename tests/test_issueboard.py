@@ -18,7 +18,7 @@ from issueboard.app import directory, evidence, main
 from youtrack_board import credentials
 from youtrack_board.app import BoardApp
 from youtrack_board.demo import DemoClient as YouTrackDemo
-from youtrack_board.prefs import default_path, write_json
+from issueboard.prefs import default_path, write_json
 
 ACCOUNT = credentials.Credentials(YouTrackDemo.base_url, 'not-a-real-token', 'saved in a test keyring')
 
@@ -35,6 +35,7 @@ def run(monkeypatch):
     """Boards built by issueboard, recorded instead of run; their clients are the offline demos."""
     started = []
     monkeypatch.setattr(BoardApp, 'run', lambda self: started.append(self))
+    monkeypatch.setattr(issueboard.gitlab_app.GitLabApp, 'run', lambda self: started.append(self))
     monkeypatch.setattr(issueboard, 'YouTrack', lambda url, token: YouTrackDemo())
     monkeypatch.setattr(issueboard, 'GitLab', lambda host: GitLabDemo())
     return started
@@ -93,11 +94,11 @@ def test_gitlab_hosting_alone_suggests_nothing_and_saved_links_do(tmp_path):
     repo = checkout(tmp_path / 'code', ('origin', f'git@{HOST}:demo/portal.git'))
     pointing, why, _ = evidence(repo)
     assert pointing == [] and 'alone decides nothing' in why[0]
-    write_json(default_path(), {YouTrackDemo.base_url: {'repos': {'0-1': f'https://{HOST}/Demo/Portal'}}})
+    write_json(default_path('youtrack-board'), {YouTrackDemo.base_url: {'repos': {'0-1': f'https://{HOST}/Demo/Portal'}}})
     assert evidence(repo)[0] == ['youtrack']
     write_json(default_path('gitlab-board'), {HOST: {'defaults': {'demo/portal': 'demo/portal/-/boards/1'}}})
     assert evidence(repo)[0] == ['youtrack', 'gitlab']  # both: ambiguous, so nothing is suggested
-    write_json(default_path(), {})
+    write_json(default_path('youtrack-board'), {})
     assert evidence(repo)[0] == ['gitlab']
     git('-C', repo, 'checkout', '-q', '-b', 'feature/WEB-12-login')
     assert evidence(repo)[0] == ['youtrack', 'gitlab']
@@ -190,7 +191,7 @@ def test_youtrack_credentials_for_another_server_open_nothing(tmp_path, monkeypa
     monkeypatch.setattr(issueboard.youtrack_app.Prefs, 'visit', lambda *_: pytest.fail('a board was recorded as visited'))
     with pytest.raises(SystemExit, match='other.youtrack.cloud.*youtrack-board --setup.*issueboard --setup'):
         main([])
-    assert not run and saved() == folders and not Path(default_path()).exists()
+    assert not run and saved() == folders and not Path(default_path('youtrack-board')).exists()
 
 
 def test_both_demos_start_offline(monkeypatch, run):

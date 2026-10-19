@@ -1,4 +1,4 @@
-"""A keyboard-driven GitLab issue board in the terminal, on top of the YouTrack board's layout, keys and refresh.
+"""A keyboard-driven GitLab issue board in the terminal, using the shared board layout, keys and refresh.
 
 GitLab decides which issues each list holds and what a move changes; this app shows the lists, sends the same
 board mutations as GitLab's page, and explains their effects first. Requests go through glab (see glab.py).
@@ -17,8 +17,10 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical, Vertic
 from textual.content import Content
 from textual.widgets import Button, Footer, Input, Label, Static
 
-from youtrack_board import prefs as base_prefs
-from youtrack_board.app import (ALL, HINT, BacklogScreen, BoardApp, Card, Column, CommentDialog, CommentsScreen, Picker,
+from issueboard import prefs as base_prefs
+from issueboard.board import BoardView
+from issueboard.diagnostics import LogPanel
+from issueboard.widgets import (ALL, HINT, BacklogScreen, Card, Column, CommentDialog, CommentsScreen, Picker,
                                 Row, ViewDialog, ago, plain)
 
 from . import glab, remotes, target
@@ -27,7 +29,6 @@ from .demo import HOST as DEMO_HOST
 from .demo import DemoClient, demo_state
 from .glab import GlabError
 from .markup import glfm
-from youtrack_board.diagnostics import LogPanel
 
 from .merge_requests import MergeRequestsScreen
 
@@ -39,7 +40,7 @@ def clean_view(view):
 
 
 class Prefs(base_prefs.Prefs):
-    """The YouTrack app's local state file format, in gitlab-board/state.json, per GitLab host. Boards are keyed by
+    """The shared local state file format, in gitlab-board/state.json, per GitLab host. Boards are keyed by
     their web path (group/project/-/boards/1), 'project' holds the project or group last used, and 'defaults' the
     board you chose to open for each project or group (group/project or groups/group -> board key)."""
     VIEW = staticmethod(clean_view)
@@ -114,33 +115,11 @@ class NotesScreen(CommentsScreen):
             yield VerticalScroll(id='thread')
             yield Static('', id='hint', classes='hint')
 
-    def action_source(self):
-        self.app.action_source()
-        for widget, note in zip(self.query('#thread > .comment'), self.comments):
-            widget.update(note_text(note, self.app.source))
-
-    @work(exclusive=True)
-    async def load(self):
-        await self.show([Static('Loading comments…', classes='note')], 'Loading')
-        try:
-            notes = await self.client.notes(self.issue)
-        except GlabError as exc:
-            await self.show([Static(Text(plain(f'Could not load the comments. {exc}')), classes='note')], 'r retry',
-                            error=True)
-            return
-        self.comments = notes
-        if not notes:
-            await self.show([Static('No comments yet, or none you can see.', classes='note')],
-                            ('c write one  ·  ' if self.writable else '') + 'r reload')
-            return
-        count = f'{len(notes)} comment{"s" if len(notes) > 1 else ""}, newest first'
-        await self.show([Static(note_text(n, self.app.source), classes='comment') for n in notes],
-                        f'{count}  ·  ↑/↓ scroll  ·  {"c write  ·  " if self.writable else ""}s source  ·  r reload')
-
 
 class ListScreen(BacklogScreen):
     """One board list in full, a page at a time in GitLab's order: the Open list is GitLab's backlog. Read-only."""
     MORE = 'More in GitLab'
+    SEARCH = 'Search loaded issues: #, title, assignee or label  (/)'
 
     def __init__(self, client, place, board, lst):
         super().__init__(client, {'id': board['id'], 'name': board['name']})
@@ -151,7 +130,6 @@ class ListScreen(BacklogScreen):
         kind = 'GitLab’s backlog list' if self.list['listType'] == 'backlog' else f'{self.list["listType"]} list'
         self.query_one('#backlog-title', Static).update(Text.assemble(
             (plain(self.list['title']), 'bold'), f' · {plain(self.board["name"])}  ', (kind, 'dim')))
-        self.query_one(Input).placeholder = 'Search loaded issues: #, title, assignee or label  (/)'
 
     def matches(self, issue):
         return self.query_one(Input).value.casefold() in search_text(issue)
@@ -222,12 +200,12 @@ class AskDialog(CommentDialog):
         self.query_one(Input).placeholder = self.placeholder
 
 
-class GitLabApp(BoardApp):
+class GitLabApp(BoardView):
     TITLE = 'GitLab Board'
     SERVICE = 'GitLab'
     ERROR = GlabError
     CARD = GitLabCard
-    CSS = BoardApp.CSS + '''
+    CSS = BoardView.CSS + '''
     #scope { height: 1; padding: 0 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #scope.warning { color: $text-warning; }
     '''

@@ -16,10 +16,11 @@ from gitlab_board.glab import LOGIN, Glab, GlabError
 from gitlab_board.merge_requests import MergeRequestsScreen, repository
 from gitlab_board.target import TargetError
 from test_gitlab import FAKE, FakeGlab, demo_app, fake_glab, settle, text  # noqa: F401  (fake_glab is a fixture)
-from youtrack_board.app import BoardApp, Column, CommentDialog, Picker
+from issueboard.widgets import Column, CommentDialog, Picker
+from youtrack_board.app import BoardApp
 from youtrack_board.demo import DemoClient as YouTrackDemo
 from youtrack_board.demo import demo_gitlab, demo_state
-from youtrack_board.prefs import Prefs
+from issueboard.prefs import Prefs
 
 HOST = 'gitlab.example.com'
 

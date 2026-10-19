@@ -15,7 +15,7 @@ import subprocess
 import time
 from urllib.parse import urlencode
 
-from youtrack_board.diagnostics import LOGGER
+from issueboard.diagnostics import LOGGER
 
 TIMEOUT = 30  # seconds; GitLab's own GraphQL timeout is 30 s too
 INSTALL = ('Install the GitLab CLI (glab): brew install glab, or see '

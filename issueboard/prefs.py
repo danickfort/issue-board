@@ -1,7 +1,7 @@
 """Local, per-server view state: when boards were last opened here, the project scope, per-board view options, and
 the GitLab repository of each project for its merge requests.
 
-Nothing here is sent to YouTrack and no credentials are stored.
+Nothing here is sent to either tracker and no credentials are stored.
 """
 import contextlib
 import json
@@ -27,7 +27,7 @@ def write_json(path, data):
         raise
 
 
-def default_path(app='youtrack-board'):
+def default_path(app):
     base = os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
     return os.path.join(base, app, 'state.json')
 

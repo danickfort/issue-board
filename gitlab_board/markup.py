@@ -1,4 +1,4 @@
-"""GitLab Flavored Markdown through the YouTrack app's safe renderer (youtrack_board/markup.py).
+"""GitLab Flavored Markdown through the shared safe renderer (issueboard/markup.py).
 
 GitLab keeps a single newline inside the paragraph, so line breaks are not forced. A few GitLab-only blocks are
 turned into what CommonMark can show: >>> multi-line quotes become quotes, alert markers become a bold title, and
@@ -7,7 +7,7 @@ emoji codes) stays readable as typed. See docs/research/gitlab-board.md.
 """
 import re
 
-from youtrack_board.markup import CHECKBOX, markdown
+from issueboard.markup import CHECKBOX, markdown
 
 TASKS = {**CHECKBOX, '[~] ': '⊘ '}
 ALERT = re.compile(r'^(\s*>\s*)\[!(note|tip|important|caution|warning)\]\s*$', re.IGNORECASE | re.MULTILINE)

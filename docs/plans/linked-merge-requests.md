@@ -84,7 +84,7 @@ Coverage limits, stated in the panel and the guide: only the mapped project; onl
 
 ## Results
 
-Code: `gitlab_board/merge_requests.py` (panel, status words, URL checks), `gitlab_board/client.py` (`issue_merge_requests`, `project_merge_requests`, `mentions`, `issue_links`), `gitlab_board/demo.py` (fixtures), `gitlab_board/app.py` and `youtrack_board/app.py` (`g`), `youtrack_board/prefs.py` (`repos`), `youtrack_board/demo.py` (`demo_gitlab`), `pyproject.toml` (packaging).
+Code: `gitlab_board/merge_requests.py` (panel, status words, URL checks), `gitlab_board/client.py` (`issue_merge_requests`, `project_merge_requests`, `mentions`, `issue_links`), `gitlab_board/demo.py` (fixtures), `gitlab_board/app.py` and `youtrack_board/app.py` (`g`), `issueboard/prefs.py` (`repos`), `youtrack_board/demo.py` (`demo_gitlab`), `pyproject.toml` (packaging).
 
 Stage 1, GitLab board:
 
