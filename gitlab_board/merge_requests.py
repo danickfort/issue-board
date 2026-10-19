@@ -136,10 +136,10 @@ def details(mr, home=None):
     auto = 'on' if mr.get('autoMergeEnabled') is True else 'off' if mr.get('autoMergeEnabled') is False else 'unknown'
     return Text.assemble(
         (reference(mr, home), 'bold'), f'  {"draft · " if mr.get("draft") else ""}{"being merged" if mr["state"] == "locked" else "open"} · auto-merge {auto}\n',
+        plain(f'Branch: {mr.get("sourceBranch")} → {mr.get("targetBranch")}{fork}\n'),
         plain(activity), '\n',
         plain(f'Author: {person(mr.get("author"))}\nReviewers: {participants(mr, "reviewers")}\n'
               f'Assignees: {participants(mr, "assignees")}\n'),
-        plain(f'{mr.get("sourceBranch")} → {mr.get("targetBranch")}{fork}\n'),
         plain('  ·  '.join(f'{name}: {value}' for name, value in status if value)), '\n',
         (plain(' · '.join(filter(None, [mr.get('why'), f'updated {updated} UTC' if updated else None]))), 'dim'))
 
@@ -231,6 +231,7 @@ class MergeRequestsScreen(ModalScreen):
             return
         options = self.query_one(OptionList)
         options.set_options([Option(Text.assemble((reference(mr, self.home), 'bold'), '  ', plain(mr['title']), '\n',
+                                                  ('  Branch: ' + plain(mr.get('sourceBranch') or 'unknown') + '\n', 'dim'),
                                                   ('  ' + summary(mr), 'dim'))) for mr in self.mrs])
         options.highlighted = next((n for n, mr in enumerate(self.mrs) if mr.get('webUrl') == keep), 0)
         self.notes = ' · '.join(notes)

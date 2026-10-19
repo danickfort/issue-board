@@ -1,4 +1,5 @@
 import pytest
+from textual.widgets import OptionList
 
 from gitlab_board.client import Client
 from gitlab_board.merge_requests import details, participants, person, summary
@@ -68,6 +69,11 @@ async def test_mr_people_are_readable_in_both_apps_with_scrollable_details(servi
         await settle(app, pilot)
         screen = app.screen
         content = str(screen.query_one('#mr-details').content)
+        branch = screen.current()['sourceBranch']
+        listing = screen.query_one(OptionList)
+        prompt = listing.get_option_at_index(listing.highlighted).prompt.plain
+        assert f'Branch: {branch}' in prompt
+        assert content.splitlines()[1] == f'Branch: {branch} → {screen.current()["targetBranch"]}'
         assert 'auto-merge on' in content and 'Author: Alex Morgan (@alex)' in content
         assert 'Reviewers: Jordan Lee (@jordan) — reviewing' in content
         assert 'Assignees: Sam Rivera (@sam)' in content
