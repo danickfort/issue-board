@@ -24,7 +24,7 @@ ISSUE = ('id iid title reference(full: true) webUrl state confidential closedAt 
 ISSUE_EE = ISSUE + ' weight healthStatus iteration { title } epic { id iid title } status { name }'
 LIST = 'id title listType position collapsed issuesCount label { title }'
 LIST_EE = LIST + ' maxIssueCount limitMetric assignee { username name } milestone { title } iteration { title }'
-# A merge request's status, as the panel shows it (see docs/plans/linked-merge-requests.md). Approvals are Premium.
+# A merge request's status, as the panel shows it. Approvals are Premium.
 MR = ('iid title webUrl state draft sourceBranch targetBranch conflicts detailedMergeStatus updatedAt '
       'userNotesCount resolvableDiscussionsCount resolvedDiscussionsCount '
       'autoMergeEnabled author { username name } '

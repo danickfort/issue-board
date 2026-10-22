@@ -2,7 +2,7 @@
 project or group. An issue an MR links can be opened from here (i).
 
 Status words never claim more than GitLab says: a mergeability GitLab has not checked is "not checked yet", and no
-pipeline is "no pipeline", not "passed". See docs/plans/linked-merge-requests.md.
+pipeline is "no pipeline", not "passed".
 """
 import webbrowser
 from urllib.parse import urlsplit

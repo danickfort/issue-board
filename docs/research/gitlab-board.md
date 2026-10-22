@@ -91,7 +91,7 @@ Each tracker keeps its own client, authentication, startup, filters, issue and c
 | Members to assign | REST `GET /projects/:path/members/all`, 100 per page, at most 5 pages | Active members with at least the Guest role |
 | Comments | REST `GET /projects/:path/issues/:iid/notes?sort=desc&order_by=created_at&activity_filter=only_comments`, at most 20 pages | System notes are also dropped locally |
 | Write a comment | REST `POST /projects/:path/issues/:iid/notes`, JSON body on stdin | No GraphQL, so the 10,000-character query limit never applies to the comment |
-| An issue's merge requests (`g`) | GraphQL `workItem(id) { widgets { … on WorkItemWidgetDevelopment { closingMergeRequests relatedMergeRequests } } }`, 100 each | As GitLab's issue page; one issue per request. See [linked merge requests](../plans/linked-merge-requests.md) |
+| An issue's merge requests (`g`) | GraphQL `workItem(id) { widgets { … on WorkItemWidgetDevelopment { closingMergeRequests relatedMergeRequests } } }`, 100 each | As GitLab's issue page; one issue per request. |
 
 **How glab is run.**
 

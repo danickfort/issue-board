@@ -131,7 +131,7 @@ Each MR lists its source branch; source and target branches appear at the top of
 
 `i` opens an issue the selected MR links, in both panels. GitLab says which: the issues the MR closes when merged (`closes_issues`), then those it mentions (`related_issues`), including issues of other projects, as far as your account may see them. One issue opens at once; several are offered to choose from; none is said. An issue on the board opens in place: its card is selected and its details expand with its comments. Any other issue opens in the browser, only if its address is on the board's host. The issues are read for that MR when you press `i`.
 
-Not listed: MRs GitLab hides from your account, and branches without an MR. Up to 100 closing and 100 mentioning MRs are read; the panel says when GitLab has more. Sources and limits: [docs/plans/linked-merge-requests.md](plans/linked-merge-requests.md).
+Not listed: MRs GitLab hides from your account, and branches without an MR. Up to 100 closing and 100 mentioning MRs are read; the panel says when GitLab has more.
 
 ## What is saved
 
