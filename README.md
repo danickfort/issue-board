@@ -4,6 +4,8 @@ A keyboard-driven issue board in the terminal, for YouTrack Agile boards, GitLab
 
 ## Installation
 
+Standalone Linux downloads are built automatically for version tags. macOS users can install with Homebrew below. See [release downloads and installation](docs/releases.md).
+
 The repository and Homebrew tap are private. Your GitHub account needs access to both `danickfort/issue-board` and `danickfort/homebrew-issueboard`.
 
 ```sh

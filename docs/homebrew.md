@@ -52,7 +52,7 @@ Preferences, saved credentials and the folder choices in `~/.config/issueboard/d
    uv run python scripts/prepare_homebrew.py --git-source --url https://github.com/danickfort/issue-board.git --homepage https://github.com/danickfort/issue-board
    ```
 
-3. Tag that exact commit `v<version>` and push the commit and tag. Upload the exact generated `dist/homebrew/releases/issueboard-<version>.tar.gz` plus its SHA-256 checksum to the matching GitHub release. Do not replace an existing release silently.
+3. Tag that exact commit `v<version>` and push the commit and tag. The [release workflow](releases.md) tests, builds, and publishes the source distribution and standalone Linux packages automatically. Do not replace an existing release silently.
 4. Copy the generated `Formula/issueboard.rb` into the private tap repository and commit/push it. Its Git revision must match the release tag. The Git source is used instead of a private HTTP asset to reuse Homebrew's maintained authentication without a custom downloader; the checksummed archive remains available on the release.
 5. Fetch/install from the published tap, then run `brew test danickfort/issueboard/issueboard`. Check the actual installed behavior, not only the generated formula.
 
@@ -68,4 +68,4 @@ If the local formula is currently installed, uninstall it before installing the 
 
 ## Scope
 
-Source installation on macOS is supported. No bottles or Linux formula are provided yet. The implementation follows Homebrew's [Python application guidance](https://docs.brew.sh/Language-Specific-Formulae#python) and [tap documentation](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
+The formula supports source installation on macOS. No bottles or Linux formula are provided yet. Standalone Linux packages are available through the [release workflow](releases.md). The implementation follows Homebrew's [Python application guidance](https://docs.brew.sh/Language-Specific-Formulae#python) and [tap documentation](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
