@@ -1,3 +1,10 @@
+import asyncio
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
 import pytest
 
 
@@ -14,6 +21,7 @@ def isolated(monkeypatch, tmp_path_factory):
     (elsewhere / 'ssh_config').write_text('')
     monkeypatch.setattr('gitlab_board.remotes.SSH_CONFIG', str(elsewhere / 'ssh_config'))
     monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setenv('USERPROFILE', str(home))  # expanduser uses this on Windows, not HOME
     monkeypatch.setenv('XDG_CONFIG_HOME', str(home / 'config'))
     monkeypatch.setenv('XDG_STATE_HOME', str(home / 'state'))
     for name in ('YOUTRACK_URL', 'YOUTRACK_TOKEN', 'JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'):
@@ -28,3 +36,70 @@ def no_timed_refresh(monkeypatch):
     """A slow test must not be refreshed under its feet: tests call tick() themselves."""
     monkeypatch.setattr('issueboard.board.BoardView.REFRESH', 3600)
     monkeypatch.setattr('jira_board.app.JiraApp.REFRESH', 3600)
+
+
+@pytest.fixture
+def executable_script(monkeypatch):
+    """Real Python subprocesses on every OS; Windows has no executable shebang scripts.
+
+    Only the registered fixture paths are routed through Python. Production glab
+    invocation stays unchanged, and cancellation still kills the real child PID.
+    """
+    paths = []
+    native_run, native_async, native_which = subprocess.run, asyncio.create_subprocess_exec, shutil.which
+
+    def resolve(command):
+        command = os.fspath(command)
+        for path in paths:
+            if command == str(path) or command == path.name and str(path.parent) in os.environ.get('PATH', '').split(os.pathsep):
+                return str(path)
+        return None
+
+    def run(args, *positional, **kwargs):
+        if isinstance(args, (list, tuple)) and args and (path := resolve(args[0])):
+            args = [sys.executable, path, *args[1:]]
+        return native_run(args, *positional, **kwargs)
+
+    async def launch(program, *args, **kwargs):
+        if path := resolve(program):
+            return await native_async(sys.executable, path, *args, **kwargs)
+        return await native_async(program, *args, **kwargs)
+
+    def create(path, source):
+        path = Path(path)
+        path.write_text(source, encoding='utf-8')
+        path.chmod(0o755)
+        paths.append(path)
+        if os.name == 'nt':
+            monkeypatch.setattr(subprocess, 'run', run)
+            monkeypatch.setattr(asyncio, 'create_subprocess_exec', launch)
+            monkeypatch.setattr(shutil, 'which', lambda command, *a, **kw: resolve(command) or native_which(command, *a, **kw))
+        return path
+    return create
+
+
+@pytest.fixture
+def process_exists():
+    def exists(pid):
+        if os.name == 'nt':
+            # os.kill(pid, 0) terminates processes on Windows; query the handle instead.
+            import ctypes
+            from ctypes import wintypes
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            handle = kernel.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE
+            if not handle:
+                return False
+            try:
+                return kernel.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT
+            finally:
+                kernel.CloseHandle(handle)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+    return exists

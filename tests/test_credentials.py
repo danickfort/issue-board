@@ -202,7 +202,8 @@ def test_first_start_setup_checks_read_only_and_saves_token_in_keychain_and_url_
     app = start(monkeypatch)
     assert keychain.saved == {'https://yt.example': 'good-token'}
     assert json.loads(open(config_path()).read()) == {'url': 'https://yt.example'}
-    assert os.stat(config_path()).st_mode & 0o777 == 0o600
+    if os.name != 'nt':  # POSIX mode bits do not describe Windows ACLs
+        assert os.stat(config_path()).st_mode & 0o777 == 0o600
     assert app.connection == 'yt.example as jane · token saved in macOS Keyring.'
     out = capsys.readouterr()
     assert 'Use an HTTPS YouTrack URL' in out.out and 'Not saved: YouTrack returned HTTP 401. Invalid token' in out.out

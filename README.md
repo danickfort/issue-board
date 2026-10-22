@@ -55,6 +55,10 @@ tar -xzf issueboard-0.3.3-linux-x86_64.tar.gz
 
 Python and dependencies are included. Requires glibc 2.35+ (for example Ubuntu 22.04+). Keep the extracted folder together.
 
+### Windows: in preparation
+
+Native Windows x64 ZIP builds and WinGet manifest generation are being added to the release workflow. Issue Board is not yet in the WinGet catalog. See [Windows builds and the WinGet release process](docs/windows.md).
+
 ### Run a board
 
 ```sh

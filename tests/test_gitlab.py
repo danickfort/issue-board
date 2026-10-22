@@ -131,10 +131,8 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
 
 
 @pytest.fixture
-def fake_glab(tmp_path, monkeypatch):
-    script = tmp_path / 'glab'
-    script.write_text(FAKE.format(python=sys.executable))
-    script.chmod(0o755)
+def fake_glab(tmp_path, monkeypatch, executable_script):
+    script = executable_script(tmp_path / 'glab', FAKE.format(python=sys.executable))
     log = tmp_path / 'log.jsonl'
     monkeypatch.setenv('FAKE_LOG', str(log))
     monkeypatch.setenv('GLAB_DEBUG_HTTP', '1')  # would print request headers; must never reach glab
@@ -201,7 +199,7 @@ async def test_glab_errors_say_what_happened_without_secrets(fake_glab, monkeypa
         Glab('gitlab.com --method POST')
 
 
-async def test_cancelled_or_slow_glab_is_stopped(fake_glab, monkeypatch):
+async def test_cancelled_or_slow_glab_is_stopped(fake_glab, monkeypatch, process_exists):
     runner, calls = fake_glab
     monkeypatch.setenv('FAKE_MODE', 'sleep')
 
@@ -215,13 +213,11 @@ async def test_cancelled_or_slow_glab_is_stopped(fake_glab, monkeypatch):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)
+    assert not process_exists(pid)
     monkeypatch.setattr(glab, 'TIMEOUT', 0.5)
     with pytest.raises(GlabError, match='did not answer'):
         await runner.get('user')
-    with pytest.raises(ProcessLookupError):
-        os.kill(calls()[-1]['pid'], 0)
+    assert not process_exists(calls()[-1]['pid'])
 
 
 async def test_rest_pages_stop_at_a_short_page_and_at_the_cap(fake_glab, monkeypatch):

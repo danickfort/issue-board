@@ -362,7 +362,7 @@ async def test_a_broken_saved_repository_is_asked_for_again():
         assert isinstance(app.screen, CommentDialog) and app.screen.query_one(Input).value == 'not a url/'
 
 
-async def test_glab_missing_or_signed_out_is_explained_and_nothing_is_saved(tmp_path, monkeypatch):
+async def test_glab_missing_or_signed_out_is_explained_and_nothing_is_saved(tmp_path, monkeypatch, executable_script):
     client = YouTrackDemo()
     app = BoardApp(client, Prefs(None, client.base_url))  # glab's GitLab, as outside the demo
     monkeypatch.setattr('shutil.which', lambda name: None)
@@ -372,9 +372,7 @@ async def test_glab_missing_or_signed_out_is_explained_and_nothing_is_saved(tmp_
         await pilot.press('g')
         assert not app.screen.is_modal and 'brew install glab' in str(app.query_one('#status', Static).content)
     monkeypatch.undo()
-    script = tmp_path / 'glab'
-    script.write_text(FAKE.format(python=sys.executable))
-    script.chmod(0o755)
+    script = executable_script(tmp_path / 'glab', FAKE.format(python=sys.executable))
     monkeypatch.setenv('PATH', f'{tmp_path}{os.pathsep}{os.environ["PATH"]}')
     monkeypatch.setenv('FAKE_LOG', str(tmp_path / 'log.jsonl'))
     monkeypatch.setenv('FAKE_EXIT', '1')

@@ -125,10 +125,8 @@ def test_only_hosts_glab_is_signed_in_to_count(tmp_path, monkeypatch):
         remotes.find(repo)  # a host glab knows refused the sign-in: said, not skipped
 
 
-def test_glab_tells_unknown_hosts_from_unreachable_ones(tmp_path, monkeypatch):
-    script = tmp_path / 'glab'
-    script.write_text(FAKE.format(python=sys.executable))
-    script.chmod(0o755)
+def test_glab_tells_unknown_hosts_from_unreachable_ones(tmp_path, monkeypatch, executable_script):
+    script = executable_script(tmp_path / 'glab', FAKE.format(python=sys.executable))
     monkeypatch.setenv('FAKE_LOG', str(tmp_path / 'log.jsonl'))
     monkeypatch.setenv('FAKE_EXIT', '1')
     monkeypatch.setenv('FAKE_ERR', 'X github.com has not been authenticated with glab; run `glab auth login`')

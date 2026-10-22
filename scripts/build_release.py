@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a native standalone Linux archive."""
+"""Build a native standalone Linux archive or Windows ZIP."""
 import argparse
 import hashlib
 import platform
@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import tomllib
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,13 +29,15 @@ def main():
     if args.tag and args.tag != f'v{version}':
         parser.error(f'tag {args.tag!r} does not match v{version}')
     system = platform.system()
-    if system != 'Linux':
-        parser.error('build on Linux; use Homebrew for macOS')
+    if system not in ('Linux', 'Windows'):
+        parser.error('build on Linux or Windows; use Homebrew for macOS')
     arch = {'aarch64': 'arm64', 'AMD64': 'x86_64'}.get(platform.machine(), platform.machine())
-    name = f'issueboard-{version}-linux-{arch}'
+    if system == 'Windows' and arch != 'x86_64':
+        parser.error('Windows releases currently support x86_64 only')
+    name = f'issueboard-{version}-{system.lower()}-{arch}'
     work = ROOT / 'build/release'
     output = ROOT / 'dist/release'
-    if not all(shutil.which(tool) for tool in ('objdump', 'objcopy')):
+    if system == 'Linux' and not all(shutil.which(tool) for tool in ('objdump', 'objcopy')):
         parser.error('Linux builds require binutils (objdump and objcopy); install it with your package manager')
     if work.exists():
         shutil.rmtree(work)
@@ -48,11 +51,25 @@ def main():
     bundle = work / 'dist/issueboard'
     shutil.copy2(ROOT / 'LICENSE', bundle / 'LICENSE')
     # Check the frozen command and each tracker subcommand.
-    for args in ([], ['youtrack'], ['gitlab'], ['jira']):
-        run(str(bundle / 'issueboard'), *args, '--help')
-    archive = output / f'{name}.tar.gz'
-    with tarfile.open(archive, 'w:gz') as tar:
-        tar.add(bundle, arcname=name)
+    executable = bundle / ('issueboard.exe' if system == 'Windows' else 'issueboard')
+    for command in ([], ['youtrack'], ['gitlab'], ['jira']):
+        run(str(executable), *command, '--help')
+    if system == 'Windows':
+        archive = output / f'{name}.zip'
+        with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as zipped:
+            for file in sorted(bundle.rglob('*')):
+                if file.is_file():
+                    zipped.write(file, (Path(name) / file.relative_to(bundle)).as_posix())
+        # Test the distributable, not just the build tree: _internal must survive extraction.
+        extracted = work / 'smoke'
+        with zipfile.ZipFile(archive) as zipped:
+            zipped.extractall(extracted)
+        for command in ([], ['youtrack'], ['gitlab'], ['jira']):
+            run(str(extracted / name / 'issueboard.exe'), *command, '--help')
+    else:
+        archive = output / f'{name}.tar.gz'
+        with tarfile.open(archive, 'w:gz') as tar:
+            tar.add(bundle, arcname=name)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     archive.with_name(archive.name + '.sha256').write_text(f'{digest}  {archive.name}\n')
 

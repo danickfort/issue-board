@@ -3,6 +3,18 @@ name: Release
 on:
   push:
     tags: ['v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/build_release.py'
+      - 'scripts/prepare_winget.py'
+      - 'issueboard/**'
+      - 'youtrack_board/**'
+      - 'gitlab_board/**'
+      - 'jira_board/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
   workflow_dispatch:
 
 permissions:
@@ -14,8 +26,21 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+          - os: windows-2022
+            platform: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
@@ -35,15 +60,26 @@ jobs:
       - name: Build native packages and smoke test commands
         run: uv run python scripts/build_release.py
       - name: Build Python distributions
+        if: runner.os == 'Linux'
         run: |
           uv build --out-dir dist/release
           cd dist/release
           for asset in *.whl issueboard-*.tar.gz; do
             sha256sum "$asset" > "$asset.sha256"
           done
+      - name: Generate WinGet manifests from the Windows archive
+        if: runner.os == 'Windows'
+        run: uv run python scripts/prepare_winget.py dist/release/issueboard-*-windows-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: winget-manifests
+          path: dist/winget/manifests
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
-          name: release-linux-x86_64
+          name: release-${{ matrix.platform }}
           path: dist/release/*
           if-no-files-found: error
           retention-days: 7

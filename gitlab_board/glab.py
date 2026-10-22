@@ -19,7 +19,8 @@ from issueboard.diagnostics import LOGGER
 
 TIMEOUT = 30  # seconds; GitLab's own GraphQL timeout is 30 s too
 INSTALL = ('Install the GitLab CLI (glab): brew install glab, or see '
-           'https://gitlab.com/gitlab-org/cli#installation. Then sign in with: glab auth login --hostname {host}')
+           'https://gitlab.com/gitlab-org/cli#installation (Windows: winget install --id GLab.GLab --exact). '
+           'Then sign in with: glab auth login --hostname {host}')
 LOGIN = ('glab is not signed in to {host}. Sign in with: glab auth login --hostname {host}  '
          '(check with: glab auth status --hostname {host})')
 # Quiet, non-interactive glab. GLAB_DEBUG_HTTP and DEBUG would print request headers, so they are removed.
