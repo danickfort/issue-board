@@ -4,14 +4,14 @@ A keyboard-driven GitLab issue board in the terminal. It shares the YouTrack boa
 
 ## Installation
 
-GitLab Board is part of [Issue Board](../README.md#installation), published in the public `danickfort/issue-board` repository. Install the unified application, then run `issueboard` in a project folder and choose GitLab, or run `gitlab-board` directly.
+GitLab Board is part of [Issue Board](../README.md#installation), published in the public `danickfort/issue-board` repository. Install the unified application, then run `issueboard` in a project folder and choose GitLab, or run `issueboard gitlab` directly.
 
 ```sh
 brew install glab
 brew install danickfort/issueboard/issueboard
 ```
 
-These macOS downloads are public and need no GitHub login. For Linux, follow the [standalone installation instructions](../README.md#linux-standalone-download) and install glab with your distribution’s package manager. If a standalone YouTrack Board or GitLab Board formula is installed, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs both commands. Preferences and credentials are kept.
+These macOS downloads are public and need no GitHub login. For Linux, follow the [standalone installation instructions](../README.md#linux-standalone-download) and install glab with your distribution’s package manager. If a standalone YouTrack Board or GitLab Board formula is installed, you can remove it with `brew uninstall youtrack-board gitlab-board`. Only `issueboard` is installed; use `issueboard gitlab` for GitLab-specific options. Preferences and credentials are kept.
 
 To update or uninstall:
 
@@ -21,7 +21,7 @@ brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 
-Uninstalling keeps local preferences and glab authentication. Start inside your code repository with `issueboard` or `gitlab-board`, or pass a board URL to `gitlab-board` from any directory.
+Uninstalling keeps local preferences and glab authentication. Start inside your code repository with `issueboard` or `issueboard gitlab`, or pass a board URL to `issueboard gitlab` from any directory.
 
 Design, GitLab behavior, and limits are in [docs/research/gitlab-board.md](research/gitlab-board.md).
 
@@ -40,7 +40,7 @@ For a self-managed GitLab, use its host name instead of `gitlab.com`.
 ## Try the demo
 
 ```sh
-gitlab-board --demo
+issueboard gitlab --demo
 ```
 
 No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, `Enter` on #3 (*Doing*) for its details with its comments, and `g` there for its merge requests. `G` lists every open merge request of the project; `i` on one opens the issue it links.
@@ -48,7 +48,7 @@ No GitLab account, glab or network is needed. The demo never runs glab and never
 To see how the app reads a board URL whose filters repeat, as the GitLab example does:
 
 ```sh
-gitlab-board --demo 'https://gitlab.example.com/demo/portal/-/boards/2?milestone_title=Sprint+9&label_name[]=Permits&milestone_title=Sprint+10'
+issueboard gitlab --demo 'https://gitlab.example.com/demo/portal/-/boards/2?milestone_title=Sprint+9&label_name[]=Permits&milestone_title=Sprint+10'
 ```
 
 ## Open a board
@@ -56,17 +56,17 @@ gitlab-board --demo 'https://gitlab.example.com/demo/portal/-/boards/2?milestone
 Pass the board URL as GitLab shows it in the browser. Quote it: `&`, `[` and `]` mean something to the shell.
 
 ```sh
-gitlab-board 'https://gitlab.com/geocity/geocity/-/boards/11511337?milestone_title=Sprint+9&label_name[]=PolCo&milestone_title=Sprint+10#/'
+issueboard gitlab 'https://gitlab.com/geocity/geocity/-/boards/11511337?milestone_title=Sprint+9&label_name[]=PolCo&milestone_title=Sprint+10#/'
 ```
 
 Other forms:
 
 ```sh
-gitlab-board 'https://gitlab.com/groups/my-group/-/boards/42'   # a group board
-gitlab-board 'https://gitlab.com/my-group/my-project'           # the project's default board, else its most recent
-gitlab-board my-group/my-project --hostname gitlab.example.com  # a path on another host
-gitlab-board                                                    # in a code checkout: its GitLab project, else the last board
-gitlab-board --auth-status                                      # check glab and its sign-in
+issueboard gitlab 'https://gitlab.com/groups/my-group/-/boards/42'   # a group board
+issueboard gitlab 'https://gitlab.com/my-group/my-project'           # the project's default board, else its most recent
+issueboard gitlab my-group/my-project --hostname gitlab.example.com  # a path on another host
+issueboard gitlab                                                    # in a code checkout: its GitLab project, else the last board
+issueboard gitlab --auth-status                                      # check glab and its sign-in
 ```
 
 The URL's filters apply as on GitLab's board page. A key given twice keeps its last value, and a scoped board's own milestone, labels, assignee, weight and iteration are added. The line under the toolbar shows the filters in effect and warns when the URL was adjusted. URL parameters the app does not apply (custom fields, for example) stop it before it starts, naming each one, instead of showing more issues than the URL meant.
@@ -139,13 +139,13 @@ Not listed: MRs GitLab hides from your account, and branches without an MR. Up t
 
 ## Diagnostic logs
 
-Start with `--verbose` to show a scrollable log panel (`youtrack-board --verbose` or `gitlab-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
+Start with `--verbose` to show a scrollable log panel (`issueboard youtrack --verbose` or `issueboard gitlab --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
 
 The panel records app status, warnings and errors, and network request methods, endpoints, completion times and failures. GitLab requests show glab success/failure and HTTP status when glab supplies it; GraphQL errors are logged separately. Authentication headers, tokens, query values, request/response bodies and raw glab stderr are omitted. Logs stay in memory with bounded history (up to 1,000 rendered lines); nothing is written to disk. Without `--verbose`, no diagnostic history is collected. Startup authentication happens before the panel opens and still reports failures in the terminal.
 
 ## Development
 
-A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). From this repository, run `uv sync`, then `uv run gitlab-board --demo`. Use `uv run --project /path/to/checkout gitlab-board` to launch the source version from another code repository.
+A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/). From this repository, run `uv sync`, then `uv run issueboard gitlab --demo`. Use `uv run --project /path/to/checkout issueboard gitlab` to launch the source version from another code repository.
 
 ```sh
 uv run pytest -q                       # YouTrack and GitLab tests; no network, no glab sign-in needed

@@ -1,13 +1,13 @@
 # Jira Board
 
-A keyboard-driven board for any Jira Cloud site (`https://<site>.atlassian.net`). Choose Jira for a folder in `issueboard`, or run `jira-board` on its own. Jira Data Center and Server are not supported.
+A keyboard-driven board for any Jira Cloud site (`https://<site>.atlassian.net`). Choose Jira for a folder in `issueboard`, or run `issueboard jira` on its own. Jira Data Center and Server are not supported.
 
 ```sh
-issueboard --demo jira   # or: jira-board --demo; offline, needs no account
-jira-board               # the board you opened last
-jira-board --setup       # sign in to a Jira site and save it
-jira-board --auth-status # check the credential source and account, then exit
-jira-board --logout      # remove the sites and tokens this app saved
+issueboard --demo jira   # or: issueboard jira --demo; offline, needs no account
+issueboard jira               # the board you opened last
+issueboard jira --setup       # sign in to a Jira site and save it
+issueboard jira --auth-status # check the credential source and account, then exit
+issueboard jira --logout      # remove the sites and tokens this app saved
 ```
 
 ## Connect to Jira Cloud
@@ -21,7 +21,7 @@ Setup asks for the site address, the email and the token (typing hidden), checks
 The first source that has credentials for the site is used. A site, its email and its token always come from the same source, and a token is only sent to the site it came with.
 
 1. **Environment**: `JIRA_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`, all three set. They are used for that session and never saved. If only some are set, the app stops and names the missing ones. If Jira rejects them, the app stops.
-2. **Saved by this app**: each site and its email in `$XDG_CONFIG_HOME/jira-board/config.json` (or `~/.config/jira-board/config.json`), and its token in the OS credential store under the service `jira-board`, keyed by the site address. Several sites can be saved; `jira-board` alone opens the one set up last, and each `issueboard` folder opens its own site.
+2. **Saved by this app**: each site and its email in `$XDG_CONFIG_HOME/jira-board/config.json` (or `~/.config/jira-board/config.json`), and its token in the OS credential store under the service `jira-board`, keyed by the site address. Several sites can be saved; `issueboard jira` alone opens the one set up last, and each `issueboard` folder opens its own site.
 3. **The ALS workspace keychain item** `als-atlassian-api` (macOS only; account = email, password = API token). It holds a token for `https://richemont.atlassian.net`, so it is used for that site only and never sent anywhere else. It is read in place with Apple's `security` tool on each start, never copied, and never changed or removed by this app.
 4. Otherwise, setup runs. Without an interactive terminal, the app exits with instructions instead.
 

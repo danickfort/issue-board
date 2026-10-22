@@ -168,7 +168,7 @@ def connect(force_setup=False, *, open_browser=False, interactive=True):
                 notes.append(f'YouTrack at {candidate.url} rejected the token {candidate.source}: {exc}')
                 found = [c for c in found if not same(c, candidate)]
     if not interactive:
-        raise SetupError(' '.join([*notes, 'No usable YouTrack credentials. Run youtrack-board --setup.']))
+        raise SetupError(' '.join([*notes, 'No usable YouTrack credentials. Run issueboard youtrack --setup.']))
     return setup(found, config.get('url', ''), notes, open_browser=open_browser)
 
 
@@ -192,7 +192,7 @@ def setup(found=(), url='', notes=(), *, open_browser=False):
     if not sys.stdin.isatty():
         hint = f' {len(found)} YouTrack MCP entries were found; choose one with --setup.' if len(found) > 1 else ''
         raise SetupError(' '.join([*notes, 'No usable YouTrack credentials.' + hint,
-                                   'Run youtrack-board --setup in a terminal, or set YOUTRACK_URL and YOUTRACK_TOKEN.']))
+                                   'Run issueboard youtrack --setup in a terminal, or set YOUTRACK_URL and YOUTRACK_TOKEN.']))
     for note in notes:
         print(note)
     print('Connect to YouTrack · 1. Instance URL  2. Permanent token  3. Verify and save\n'

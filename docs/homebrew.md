@@ -15,9 +15,9 @@ brew test danickfort/issueboard/issueboard
 
 No GitHub account, `gh` login, credential helper or token environment variable is required. You can also run `brew tap danickfort/issueboard`, then `brew install issueboard`. This is a third-party tap; the formula is not part of Homebrew core.
 
-The formula downloads a public source release with a SHA-256 checksum and pins the Python dependency resources with their own checksums. It installs an isolated Python 3.14 environment and links `issueboard`, `youtrack-board`, `gitlab-board` and `jira-board`. Runtime use needs no uv or checkout.
+The formula downloads a public source release with a SHA-256 checksum and pins the Python dependency resources with their own checksums. It installs an isolated Python 3.14 environment and links only `issueboard`. Runtime use needs no uv or checkout.
 
-If the older standalone formulas are installed, run `brew uninstall youtrack-board gitlab-board` first. Preferences and credentials are preserved. GitLab boards also need `glab` (`brew install glab`) and its own sign-in.
+The older standalone formulas are no longer needed and can be removed with `brew uninstall youtrack-board gitlab-board`. Preferences and credentials are preserved. GitLab boards also need `glab` (`brew install glab`) and its own sign-in.
 
 ```sh
 brew update
@@ -25,9 +25,9 @@ brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 
-Existing users of the private tap can update normally without authentication environment variables. Uninstalling preserves preferences, folder choices and credentials. Run `youtrack-board --logout` and `jira-board --logout` first to remove the apps' saved tokens; MCP configuration is never changed. GitLab sign-ins belong to glab.
+Existing users of the private tap can update normally without authentication environment variables. Uninstalling preserves preferences, folder choices and credentials. Run `issueboard youtrack --logout` and `issueboard jira --logout` first to remove the apps' saved tokens; MCP configuration is never changed. GitLab sign-ins belong to glab.
 
-The tap's GitHub Actions workflow installs through the public tap on macOS and runs `brew test`, which checks all four commands and loads the three demo boards headlessly without credentials or a live tracker.
+The tap's GitHub Actions workflow installs through the public tap on macOS and runs `brew test`, which checks the command and its tracker subcommands and loads the three demo boards headlessly without credentials or a live tracker.
 
 ## Update the tap after a release
 

@@ -1,6 +1,6 @@
 [project]
 name = "issueboard"
-version = "0.3.1"
+version = "0.3.2"
 description = "A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud"
 readme = "README.md"
 license = "MIT"
@@ -10,9 +10,6 @@ dependencies = ["textual>=1.0,<9", "httpx>=0.28,<1", "keyring>=25,<26"]
 
 [project.scripts]
 issueboard = "issueboard.app:main"
-youtrack-board = "youtrack_board.app:main"
-gitlab-board = "gitlab_board.app:main"
-jira-board = "jira_board.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -27,7 +24,7 @@ release = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-# issueboard opens any of the boards; youtrack-board, gitlab-board and jira-board also run on their own.
+# issueboard is the sole command; tracker-specific options are subcommands.
 [tool.hatch.build.targets.wheel]
 include = ["issueboard", "youtrack_board", "gitlab_board", "jira_board"]
 

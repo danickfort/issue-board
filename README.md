@@ -1,6 +1,6 @@
 # Issue Board
 
-A keyboard-driven issue board in the terminal, for YouTrack Agile boards, GitLab issue boards and Jira Cloud boards, built with Python and Textual. One command, `issueboard`, opens the right board for the project folder you are in. It contains YouTrack Board, [GitLab Board](docs/gitlab-board.md) and [Jira Board](docs/jira-board.md), whose commands `youtrack-board`, `gitlab-board` and `jira-board` also work with all their options.
+A keyboard-driven issue board in the terminal, for YouTrack Agile boards, GitLab issue boards and Jira Cloud boards, built with Python and Textual. One command, `issueboard`, opens the right board for the project folder you are in. Use `issueboard youtrack`, `issueboard gitlab` or `issueboard jira` for tracker-specific options. Only the `issueboard` executable is installed.
 
 ## Installation
 
@@ -23,29 +23,29 @@ brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 
-If the older YouTrack Board or GitLab Board formulas are installed, uninstall them first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Preferences and credentials are preserved. Existing users of the private tap can run `brew update` and upgrade normally; GitHub authentication variables are no longer required.
+Older standalone YouTrack Board and GitLab Board formulas are no longer needed; you can uninstall them with `brew uninstall youtrack-board gitlab-board`. Preferences and credentials are preserved. Existing users of the private tap can run `brew update` and upgrade normally; GitHub authentication variables are no longer required.
 
 ### Linux: standalone download
 
 Download the Linux x86_64 archive and its `.sha256` file from [the latest release](https://github.com/danickfort/issue-board/releases/latest). It includes Python and the app dependencies. It requires glibc 2.35+ (for example Ubuntu 22.04+); ARM and Alpine/musl are not supported by this archive.
 
-For version 0.3.1:
+For version 0.3.2:
 
 ```sh
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.1/issueboard-0.3.1-linux-x86_64.tar.gz
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.1/issueboard-0.3.1-linux-x86_64.tar.gz.sha256
-sha256sum -c issueboard-0.3.1-linux-x86_64.tar.gz.sha256
-tar -xzf issueboard-0.3.1-linux-x86_64.tar.gz
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.2/issueboard-0.3.2-linux-x86_64.tar.gz
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.2/issueboard-0.3.2-linux-x86_64.tar.gz.sha256
+sha256sum -c issueboard-0.3.2-linux-x86_64.tar.gz.sha256
+tar -xzf issueboard-0.3.2-linux-x86_64.tar.gz
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-mv issueboard-0.3.1-linux-x86_64 "$HOME/.local/opt/"
-for command in issueboard youtrack-board gitlab-board jira-board; do
-  ln -sfn "$HOME/.local/opt/issueboard-0.3.1-linux-x86_64/$command" "$HOME/.local/bin/$command"
-done
+mv issueboard-0.3.2-linux-x86_64 "$HOME/.local/opt/"
+ln -sfn "$HOME/.local/opt/issueboard-0.3.2-linux-x86_64/issueboard" "$HOME/.local/bin/issueboard"
 export PATH="$HOME/.local/bin:$PATH"
 issueboard --demo youtrack
 ```
 
-Keep the whole extracted folder, including `_internal`. Add the PATH line to your shell configuration if `~/.local/bin` is not already on PATH. For updates, install the new version in `~/.local/opt` and repoint the four links. To uninstall, remove those links and the extracted folder. Preferences and credentials are preserved. The Homebrew formula currently supports macOS only.
+Keep the whole extracted folder, including `_internal`. Add the PATH line to your shell configuration if `~/.local/bin` is not already on PATH. For updates, install the new version in `~/.local/opt` and repoint the `issueboard` link. To uninstall, remove that link and the extracted folder. Preferences and credentials are preserved. The Homebrew formula currently supports macOS only.
+
+If upgrading a Linux archive installation from 0.3.1, remove the old `youtrack-board`, `gitlab-board` and `jira-board` symlinks from `~/.local/bin`; the new archive supplies only `issueboard`. Homebrew upgrades remove the previous formula-owned links automatically.
 
 ### Run a board
 
@@ -53,14 +53,14 @@ Keep the whole extracted folder, including `_internal`. Add the PATH line to you
 issueboard                    # this folder's board; asks the first time
 issueboard --setup            # choose this folder's tracker and board again
 issueboard --demo youtrack    # or: issueboard --demo gitlab, issueboard --demo jira
-youtrack-board --setup --open # replace the saved YouTrack connection
-youtrack-board --auth-status
-jira-board --setup            # sign in to a Jira Cloud site
+issueboard youtrack --setup --open # replace the saved YouTrack connection
+issueboard youtrack --auth-status
+issueboard jira --setup            # sign in to a Jira Cloud site
 ```
 
 GitLab boards require [glab](https://gitlab.com/gitlab-org/cli) and its own sign-in; on macOS use `brew install glab`, or on Linux install it with your distribution's package manager. YouTrack and Jira use the OS credential store; on Linux, a working Secret Service or KWallet session is needed to save tokens.
 
-Uninstalling preserves your preferences and credentials. Run `youtrack-board --logout` and `jira-board --logout` before uninstalling to remove the apps' saved tokens. Existing MCP credentials are never changed. [Homebrew maintenance](docs/homebrew.md) and [release instructions](docs/releases.md).
+Uninstalling preserves your preferences and credentials. Run `issueboard youtrack --logout` and `issueboard jira --logout` before uninstalling to remove the apps' saved tokens. Existing MCP credentials are never changed. [Homebrew maintenance](docs/homebrew.md) and [release instructions](docs/releases.md).
 
 ## One board per project folder
 
@@ -69,12 +69,12 @@ The first time `issueboard` starts in a folder, it asks whether the folder's iss
 - **The folder** is the root of the Git checkout you are in, so all its subfolders share one choice, and each Git worktree has its own. Outside Git, it is the current folder.
 - **The suggestion** comes from local clues only, each listed with the question: YouTrack Board already showing merge requests of this checkout's GitLab repository, GitLab Board having opened this project's boards, or a branch name with an issue key such as `WEB-12` whose project another folder already opens a Jira board of. A GitLab remote alone suggests nothing: YouTrack and Jira projects often keep their code on GitLab. Nor does an issue key alone: YouTrack and Jira write them the same way. When the clues disagree, or there are none, nothing is preselected. Either way you confirm the choice, with Enter for a suggestion or a number.
 - **Searchable choices.** Project and board lists filter as you type, using fuzzy matching (for example, `prdtm` finds “Product team”). Use ↑/↓ to highlight a match, Enter to select it, and Esc to cancel without saving. Clear the search to see the full list again.
-- **YouTrack** signs in exactly like `youtrack-board` ([credentials](#connect-to-youtrack)), then asks for a project (or All projects) and a board.
-- **Jira** signs in like `jira-board` ([credentials](docs/jira-board.md#connect-to-jira-cloud)) and uses that site (run `jira-board --setup` first for another one), then asks for one of your recent projects, a typed project key or All projects, and a board.
+- **YouTrack** signs in exactly with `issueboard youtrack` ([credentials](#connect-to-youtrack)), then asks for a project (or All projects) and a board.
+- **Jira** signs in with `issueboard jira` ([credentials](docs/jira-board.md#connect-to-jira-cloud)) and uses that site (run `issueboard jira --setup` first for another one), then asks for one of your recent projects, a typed project key or All projects, and a board.
 - **GitLab** offers the checkout's GitLab remotes, or a project, group or board URL you type, then checks that glab is signed in to that host. If it is not, it offers to run `glab auth login --hostname <host>`, which keeps the token in glab. Then it asks for the board.
 - **Nothing is saved** until setup succeeds. Ctrl+C, Ctrl+D, a declined sign-in or a failed check leaves the folder's previous choice, if any, as it was.
 
-Later starts in that folder open the saved board directly. `issueboard --setup` asks again, with the current tracker preselected. Choices are kept in `$XDG_CONFIG_HOME/issueboard/directories.json` (or `~/.config/issueboard/directories.json`), keyed by folder path. Nothing is written to the project. They hold board IDs and URLs, never tokens. If that file is damaged, `issueboard` stops and names it rather than overwriting it. Without an interactive terminal, `issueboard` never prompts: in a folder without a choice, or with `--setup`, it exits and names `youtrack-board`, `gitlab-board` and `jira-board` as alternatives. A Jira folder only ever opens with credentials for its own site.
+Later starts in that folder open the saved board directly. `issueboard --setup` asks again, with the current tracker preselected. Choices are kept in `$XDG_CONFIG_HOME/issueboard/directories.json` (or `~/.config/issueboard/directories.json`), keyed by folder path. Nothing is written to the project. They hold board IDs and URLs, never tokens. If that file is damaged, `issueboard` stops and names it rather than overwriting it. Without an interactive terminal, `issueboard` never prompts: in a folder without a choice, or with `--setup`, it exits and names the `issueboard youtrack`, `issueboard gitlab` and `issueboard jira` subcommands as alternatives. A Jira folder only ever opens with credentials for its own site.
 
 ## Try the demo
 
@@ -86,7 +86,7 @@ issueboard --demo gitlab
 issueboard --demo jira
 ```
 
-`youtrack-board --demo`, `gitlab-board --demo` and `jira-board --demo` are the same demos. The YouTrack demo is described here, the GitLab demo in [GitLab Board](docs/gitlab-board.md). The Jira demo has a scrum board with several statuses per column and a 60-issue backlog, a kanban board with an empty column and a sub-filter, a scrum board without an active sprint, a formatted description (WEB-1, `Enter`), comments with a role restriction (WEB-3), and a *Done* transition that asks for the resolution.
+The tracker subcommands also accept `--demo`. The YouTrack demo is described here, the GitLab demo in [GitLab Board](docs/gitlab-board.md). The Jira demo has a scrum board with several statuses per column and a 60-issue backlog, a kanban board with an empty column and a sub-filter, a scrum board without an active sprint, a formatted description (WEB-1, `Enter`), comments with a role restriction (WEB-3), and a *Done* transition that asks for the resolution.
 
 No YouTrack account or credentials are needed. To run from a source checkout instead, see [Development](#development).
 
@@ -97,7 +97,7 @@ The demo includes multiple projects and boards. *Services desk* demonstrates pro
 After installing, start the app:
 
 ```sh
-youtrack-board
+issueboard youtrack
 ```
 
 The app looks for credentials in the places below. If none work, it guides you through the instance URL, token creation, and verification in the terminal. It asks for your instance's base URL (including any context path, for example `https://example.org/youtrack`) and a permanent token, with typing hidden. It checks them with a read-only sign-in (`GET /api/users/me`) and saves them. Setup never changes anything in YouTrack.
@@ -119,10 +119,10 @@ The app does not read project-level MCP files, `.env` files, or other tools' cre
 
 ### Change or remove credentials
 
-- `youtrack-board --setup --open` opens your instance’s Account Security page after you enter its URL, then asks for a hidden token. Setup always prints the link as well, so it works without a browser. The browser is opened only once even if verification needs a retry. This guides permanent-token creation; it is not OAuth login.
-- `youtrack-board --auth-status` checks the configured account and reports the instance and credential source without opening the board or asking for missing credentials. Offline results explicitly say the connection was not verified.
-- `youtrack-board --setup` runs setup again: choose a found entry or type a URL and token. It checks and saves them, then opens the board. Use it to switch instances or replace a token. When the URL changes, the token saved for the old URL is removed.
-- `youtrack-board --logout` removes the saved token from the credential store and deletes the config file, then exits. It lists any environment variables and MCP entries that it left alone and that would still be used on the next start.
+- `issueboard youtrack --setup --open` opens your instance’s Account Security page after you enter its URL, then asks for a hidden token. Setup always prints the link as well, so it works without a browser. The browser is opened only once even if verification needs a retry. This guides permanent-token creation; it is not OAuth login.
+- `issueboard youtrack --auth-status` checks the configured account and reports the instance and credential source without opening the board or asking for missing credentials. Offline results explicitly say the connection was not verified.
+- `issueboard youtrack --setup` runs setup again: choose a found entry or type a URL and token. It checks and saves them, then opens the board. Use it to switch instances or replace a token. When the URL changes, the token saved for the old URL is removed.
+- `issueboard youtrack --logout` removes the saved token from the credential store and deletes the config file, then exits. It lists any environment variables and MCP entries that it left alone and that would still be used on the next start.
 - If YouTrack rejects a saved or discovered token (HTTP 401 or 403), the app says so and runs setup, with the URL filled in. A rejected entry is not offered again. Setup stops after three failed attempts and saves nothing; Ctrl+C or Ctrl+D cancels it.
 - If YouTrack cannot be reached, the app does not ask for a new token. The board opens with the connection error, and `r` retries.
 - Without an interactive terminal, the app does not prompt. It exits with instructions.
@@ -139,7 +139,7 @@ To use a token for one session without saving it, set both variables (the `read`
 ```sh
 export YOUTRACK_URL='https://your-instance.youtrack.cloud'
 read -s 'YOUTRACK_TOKEN?YouTrack token: '; export YOUTRACK_TOKEN
-youtrack-board
+issueboard youtrack
 ```
 
 ## Controls
@@ -297,15 +297,15 @@ It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devporta
 
 ## GitLab Board
 
-Issue Board includes GitLab Board. Choose GitLab for a folder in `issueboard`, or run `gitlab-board` inside a repository with a GitLab remote, or `gitlab-board --demo` to explore offline. Its separate [repository](https://github.com/krabilousse/gitlab-board) and `gitlab-board` formula are superseded by Issue Board. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
+Issue Board includes GitLab Board. Choose GitLab for a folder in `issueboard`, or run `issueboard gitlab` inside a repository with a GitLab remote, or `issueboard gitlab --demo` to explore offline. Its separate [repository](https://github.com/krabilousse/gitlab-board) and `gitlab-board` formula are superseded by Issue Board. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
 
 ## Jira Board
 
-Issue Board includes Jira Board for Jira Cloud. Choose Jira for a folder in `issueboard`, or run `jira-board`, or `jira-board --demo` to explore offline. [Usage, credentials and limits](docs/jira-board.md).
+Issue Board includes Jira Board for Jira Cloud. Choose Jira for a folder in `issueboard`, or run `issueboard jira`, or `issueboard jira --demo` to explore offline. [Usage, credentials and limits](docs/jira-board.md).
 
 ## Diagnostic logs
 
-Start with `--verbose` to show a scrollable log panel (`issueboard --verbose`, `youtrack-board --verbose`, `gitlab-board --verbose` or `jira-board --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
+Start with `--verbose` to show a scrollable log panel (`issueboard --verbose` or a tracker subcommand such as `issueboard gitlab --verbose`; also works with `--demo`). **F12** hides or shows it. Tab to the panel, then use the arrow keys or Page Up / Page Down to scroll; End follows the latest entries. Logging continues while the panel is hidden. Dialogs cover the board's panel; close the dialog to read its logs.
 
 The panel records app status, warnings and errors, and network request methods, endpoints, completion times and failures. GitLab requests show glab success/failure and HTTP status when glab supplies it; GraphQL errors are logged separately. Authentication headers, tokens, query values, request/response bodies and raw glab stderr are omitted. Logs stay in memory with bounded history (up to 1,000 rendered lines); nothing is written to disk. Without `--verbose`, no diagnostic history is collected. Startup authentication happens before the panel opens and still reports failures in the terminal.
 

@@ -193,7 +193,7 @@ def connect(site=None, force_setup=False, *, interactive=True):
                 notes.append(f'Jira at {candidate.url} rejected the API token {candidate.source}: {exc}')
     if not interactive:
         raise SetupError(' '.join([*notes, f'No usable Jira credentials{f" for {site}" if site else ""}. '
-                                   'Run jira-board --setup, or set JIRA_URL, JIRA_EMAIL and JIRA_API_TOKEN.']))
+                                   'Run issueboard jira --setup, or set JIRA_URL, JIRA_EMAIL and JIRA_API_TOKEN.']))
     found = legacy() if not site or site == LEGACY_SITE else None
     url = site or config.get('url', '')
     return setup(url, config.get('sites', {}).get(url, ''), notes, found, fixed=bool(site))
@@ -203,7 +203,7 @@ def setup(url='', email='', notes=(), found=None, *, fixed=False):
     """Ask for a site, email and API token (or take the ALS keychain item), check them read-only, and save them.
     fixed: the site is the one a folder's board is on, so it is not asked for. Three tries at most."""
     if not sys.stdin.isatty():
-        raise SetupError(' '.join([*notes, 'No usable Jira credentials. Run jira-board --setup in a terminal, or set '
+        raise SetupError(' '.join([*notes, 'No usable Jira credentials. Run issueboard jira --setup in a terminal, or set '
                                    'JIRA_URL, JIRA_EMAIL and JIRA_API_TOKEN.']))
     for note in notes:
         print(note)

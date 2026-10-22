@@ -231,7 +231,7 @@ def jira_call(account, call):
 def setup_jira():
     """Sign in as the Jira board does (saved, ALS keychain or new credentials), then choose a project and a board."""
     account, connection = jira_credentials.connect()
-    print(f'Jira site: {account.url} (another site: run jira-board --setup first).')
+    print(f'Jira site: {account.url} (another site: run issueboard jira --setup first).')
     recent = jira_call(account, lambda client: client.recent_projects())
     other = '\x00other'
     project = pick('Jira project:', [(None, 'All projects (every board on the site; slower on big sites)'),
@@ -311,7 +311,7 @@ def open_youtrack(choice, verbose, signed=None):
         # The token only works on its own server, and that server's boards are not this folder's.
         raise credentials.SetupError(
             f'This folder opens a board on {choice["url"]}, but the YouTrack token {account.source} is for '
-            f'{account.url}. Nothing was opened. Run youtrack-board --setup to sign in to {choice["url"]} '
+            f'{account.url}. Nothing was opened. Run issueboard youtrack --setup to sign in to {choice["url"]} '
             '(or set YOUTRACK_URL and YOUTRACK_TOKEN for it), or issueboard --setup to pick a board on '
             f'{account.url} for this folder.')
     client = YouTrack(account.url, account.token)
@@ -340,12 +340,16 @@ def open_gitlab(choice, verbose, version=None):
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in BACKENDS:
+        backend = argv.pop(0)
+        return {'youtrack': youtrack_app, 'gitlab': gitlab_app, 'jira': jira_app}[backend].main(argv)
     parser = argparse.ArgumentParser(
         prog='issueboard', description='A keyboard-driven YouTrack, GitLab or Jira issue board in the terminal',
         epilog='The first start in a project folder asks which tracker it uses, suggesting one from local clues, then '
                'sets it up and remembers the board for the folder (a Git checkout counts as one folder; each worktree '
-               'as its own). youtrack-board, gitlab-board and jira-board also work on their own, with all their '
-               'options.')
+               'as its own). Use issueboard youtrack, issueboard gitlab or issueboard jira for tracker-specific '
+               'setup, authentication and board options; add --help to see them.')
     parser.add_argument('--setup', action='store_true', help='choose again which tracker and board this folder opens')
     parser.add_argument('--demo', choices=BACKENDS, help='try a board with in-memory sample data; reads and saves nothing')
     parser.add_argument('--verbose', action='store_true', help='show diagnostic logs; F12 toggles the panel')
@@ -360,8 +364,8 @@ def main(argv=None):
         if args.setup or not choice:
             if not sys.stdin.isatty():
                 sys.exit(f'issueboard: {"setup needs" if choice else f"{folder} has no board yet; choosing one needs"} '
-                         'an interactive terminal. Run issueboard there, or start youtrack-board, gitlab-board or '
-                         'jira-board directly (gitlab-board takes a board URL).')
+                         'an interactive terminal. Run issueboard there, or use issueboard youtrack, issueboard gitlab or '
+                         'issueboard jira directly (issueboard gitlab takes a board URL).')
             backend, found = choose_backend(folder, os.curdir, choice and choice['backend'])
             choice, signed = {'youtrack': setup_youtrack, 'jira': setup_jira}.get(backend, lambda: setup_gitlab(found))()
             try:

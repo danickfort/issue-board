@@ -30,6 +30,24 @@ def test_directory_entry_point_shows_help():
     assert 'usage: issueboard' in result.stdout
 
 
+@pytest.mark.parametrize('backend', ['youtrack', 'gitlab', 'jira'])
+def test_tracker_subcommand_help_works_without_setup(backend):
+    result = subprocess.run([sys.executable, '-m', 'issueboard', backend, '--help'],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert f'usage: issueboard {backend}' in result.stdout
+    assert '--demo' in result.stdout
+
+
+def test_tracker_subcommand_keeps_credential_actions(monkeypatch):
+    # Logout must remain reachable without selecting or saving a folder's board.
+    logged_out = []
+    monkeypatch.setattr(credentials, 'logout', lambda: logged_out.append(True) or 'Logged out')
+    monkeypatch.setattr(issueboard, 'read_directories', lambda: pytest.fail('read a folder choice'))
+    main(['youtrack', '--logout'])
+    assert logged_out == [True]
+
+
 @pytest.fixture
 def run(monkeypatch):
     """Boards built by issueboard, recorded instead of run; their clients are the offline demos."""
@@ -174,7 +192,7 @@ def test_without_a_terminal_nothing_is_asked_and_the_way_out_is_named(tmp_path, 
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: False)
     monkeypatch.setattr('builtins.input', lambda *_: pytest.fail('asked without a terminal'))
     for argv in ([], ['--setup']):
-        with pytest.raises(SystemExit, match='interactive terminal.*youtrack-board, gitlab-board or jira-board'):
+        with pytest.raises(SystemExit, match='interactive terminal.*issueboard youtrack, issueboard gitlab or issueboard jira'):
             main(argv)
     assert saved() is None and not run
 
@@ -194,7 +212,7 @@ def test_youtrack_credentials_for_another_server_open_nothing(tmp_path, monkeypa
         'backend': 'youtrack', 'url': 'https://other.youtrack.cloud', 'project': None, 'board': 'web'}}
     write_json(issueboard.config_path(), {'directories': folders})
     monkeypatch.setattr(issueboard.youtrack_app.Prefs, 'visit', lambda *_: pytest.fail('a board was recorded as visited'))
-    with pytest.raises(SystemExit, match='other.youtrack.cloud.*youtrack-board --setup.*issueboard --setup'):
+    with pytest.raises(SystemExit, match='other.youtrack.cloud.*issueboard youtrack --setup.*issueboard --setup'):
         main([])
     assert not run and saved() == folders and not Path(default_path('youtrack-board')).exists()
 

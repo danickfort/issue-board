@@ -628,7 +628,7 @@ class JiraApp(BoardView):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='jira-board', description='A keyboard-driven Jira Cloud board in the terminal',
+        prog='issueboard jira', description='A keyboard-driven Jira Cloud board in the terminal',
         epilog='Credentials: JIRA_URL, JIRA_EMAIL and JIRA_API_TOKEN if set, else the saved ones (site and email in a '
                'config file, API token in the OS credential store), else the ALS keychain item als-atlassian-api, '
                'for https://richemont.atlassian.net only, else setup asks for them.')
@@ -653,7 +653,7 @@ def main(argv=None):
             return
         client = Client(account.url, account.email, account.token)
     except (credentials.SetupError, JiraError, OSError) as exc:
-        sys.exit(f'jira-board: {exc}')
+        sys.exit(f'issueboard jira: {exc}')
     JiraApp(client, Prefs(default_path('jira-board'), client.base_url), connection, verbose=args.verbose).run()
 
 

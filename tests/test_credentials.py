@@ -353,7 +353,7 @@ def test_setup_empty_token_does_not_contact_server_and_browser_failure_is_recove
 
 
 def test_status_resolution_never_prompts(monkeypatch, youtrack, terminal):
-    with pytest.raises(SetupError, match='Run youtrack-board --setup'):
+    with pytest.raises(SetupError, match='Run issueboard youtrack --setup'):
         credentials.connect(interactive=False)
     monkeypatch.setenv('YOUTRACK_URL', 'https://yt.example')
     monkeypatch.setenv('YOUTRACK_TOKEN', 'good-token')

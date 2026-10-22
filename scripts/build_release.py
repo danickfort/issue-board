@@ -12,7 +12,6 @@ import tarfile
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMANDS = ('issueboard', 'youtrack-board', 'gitlab-board', 'jira-board')
 
 
 def run(*args):
@@ -48,11 +47,9 @@ def main():
         '--recursive-copy-metadata', 'keyring', str(ROOT / 'scripts/frozen_entry.py'))
     bundle = work / 'dist/issueboard'
     shutil.copy2(ROOT / 'LICENSE', bundle / 'LICENSE')
-    for command in COMMANDS[1:]:
-        (bundle / command).symlink_to('issueboard')
-    # Exercise the frozen imports and command dispatch, not the source environment.
-    for command in COMMANDS:
-        run(str(bundle / command), '--help')
+    # Check the frozen command and each tracker subcommand.
+    for args in ([], ['youtrack'], ['gitlab'], ['jira']):
+        run(str(bundle / 'issueboard'), *args, '--help')
     archive = output / f'{name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(bundle, arcname=name)

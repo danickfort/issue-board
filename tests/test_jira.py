@@ -387,7 +387,7 @@ def test_setup_checks_then_saves_the_token_in_the_store_only_and_logout_removes_
     out = credentials.logout()
     assert keychain.saved == {} and 'ALS keychain item "als-atlassian-api"' in out and 'left as they are' in out
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: False)
-    with pytest.raises(SetupError, match='Run jira-board --setup in a terminal'):
+    with pytest.raises(SetupError, match='Run issueboard jira --setup in a terminal'):
         credentials.setup()
 
 

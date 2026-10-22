@@ -752,7 +752,7 @@ class GitLabApp(BoardView):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='gitlab-board', description='A keyboard-driven GitLab issue board in the terminal',
+        prog='issueboard gitlab', description='A keyboard-driven GitLab issue board in the terminal',
         epilog='Requests run through the GitLab CLI (glab) with its own sign-in: glab auth login --hostname <host>. '
                'Without a URL, inside a Git checkout whose remote is a GitLab project, that project opens on your '
                'default board, chosen the first time. Elsewhere, the board you opened last on --hostname opens again.')
@@ -769,7 +769,7 @@ def main(argv=None):
         if start:
             target.filters(start.params)  # refuse filters the board would not apply before anything starts
     except target.TargetError as exc:
-        sys.exit(f'gitlab-board: {exc}')
+        sys.exit(f'issueboard gitlab: {exc}')
     if args.demo:
         client = DemoClient()
         state = demo_state()
@@ -783,12 +783,12 @@ def main(argv=None):
             except remotes.NoRemote as exc:
                 note = str(exc) if exc.checkout else None
         if len(versions) > 1:
-            sys.exit('gitlab-board: this checkout has GitLab remotes on several hosts: ' + '; '.join(map(str, found))
+            sys.exit('issueboard gitlab: this checkout has GitLab remotes on several hosts: ' + '; '.join(map(str, found))
                      + '. Choose one with --hostname, or give a board or project URL.')
         host = next(iter(versions), host)
         version = versions.get(host) or glab.check(host)
     except GlabError as exc:
-        sys.exit(f'gitlab-board: {exc}')
+        sys.exit(f'issueboard gitlab: {exc}')
     if args.auth_status:
         print(f'{version}: signed in to {host} (glab auth status --hostname {host} shows the details).'
               + ''.join(f'\nThis checkout: {r}' for r in found))
@@ -799,7 +799,7 @@ def main(argv=None):
     elif not found and not start and prefs.data['project']:
         start = target.parse(prefs.data['project'], host)
     if not start and not found:
-        sys.exit(f'gitlab-board: {note + " " if note else ""}Give a board URL, for example '
+        sys.exit(f'issueboard gitlab: {note + " " if note else ""}Give a board URL, for example '
                  f'https://{host}/group/project/-/boards/1 (or try --demo).')
     GitLabApp(Client(host), prefs, version, start, found, note, verbose=args.verbose).run()
 

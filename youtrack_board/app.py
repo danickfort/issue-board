@@ -745,7 +745,7 @@ class BoardApp(BoardView):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description='A small YouTrack Agile board TUI',
+        prog='issueboard youtrack', description='A small YouTrack Agile board TUI',
         epilog='Credentials: YOUTRACK_URL and YOUTRACK_TOKEN if set, else the saved ones (URL in a config file, token '
                'in the OS credential store), else a single YouTrack entry in the Codex or Claude Code MCP config, '
                'else setup asks for them.')
@@ -774,7 +774,7 @@ def main(argv=None):
             return
         client = Client(account.url, account.token)
     except (credentials.SetupError, YouTrackError, OSError) as exc:
-        sys.exit(f'youtrack-board: {exc}')
+        sys.exit(f'issueboard youtrack: {exc}')
     BoardApp(client, Prefs(default_path('youtrack-board'), client.base_url), connection, cwd=os.curdir, verbose=args.verbose).run()
 
 
