@@ -3,7 +3,7 @@
 GitLab keeps a single newline inside the paragraph, so line breaks are not forced. A few GitLab-only blocks are
 turned into what CommonMark can show: >>> multi-line quotes become quotes, alert markers become a bold title, and
 [~] inapplicable tasks get their own mark. Everything else GitLab adds (references, math, diagrams, footnotes,
-emoji codes) stays readable as typed. See docs/research/gitlab-board.md.
+emoji codes) stays readable as typed.
 """
 import re
 

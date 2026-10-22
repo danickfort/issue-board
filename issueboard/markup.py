@@ -2,7 +2,6 @@
 
 Token fixes keep images, checklists and raw HTML readable in a terminal. What a terminal cannot show (images, attachments, diagrams, math,
 HTML) stays as readable text or source. Nothing is fetched and no link is followed or made clickable.
-See docs/research/markdown-support.md.
 """
 import re
 

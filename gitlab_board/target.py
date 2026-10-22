@@ -5,7 +5,6 @@ keys ending in [] collect every value, and any other key that repeats keeps only
 is then added the way the page adds it (ee/boards/boards_util.js transformBoardConfig), and the result becomes the
 GraphQL BoardIssueInput the way the page builds it (boards_util.js filterVariables). Parameters the page would drop
 silently are refused here instead, so the board never shows more than the URL meant without saying so.
-See docs/research/gitlab-board.md.
 """
 import re
 from dataclasses import dataclass, field

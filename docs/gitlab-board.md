@@ -23,8 +23,6 @@ brew uninstall issueboard
 
 Uninstalling keeps local preferences and glab authentication. Start inside your code repository with `issueboard` or `issueboard gitlab`, or pass a board URL to `issueboard gitlab` from any directory.
 
-Design, GitLab behavior, and limits are in [docs/research/gitlab-board.md](research/gitlab-board.md).
-
 ## Requirements
 
 - The GitLab CLI, signed in to your GitLab host. The board uses glab's own sign-in: it never asks for, reads, stores or prints a token.

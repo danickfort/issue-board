@@ -6,8 +6,7 @@ the fetch URLs of `git remote -v`, SSH host aliases translated, a base remote ch
 first remote when it cannot ask, several projects stay several here: the caller asks which one.
 
 Only `git` and `ssh -G` run in the checkout, and both only read. API calls still run outside it (see glab.py). Remote
-URLs can hold a user name and token, so only the host and project path are kept or shown. See
-docs/research/gitlab-board.md.
+URLs can hold a user name and token, so only the host and project path are kept or shown.
 """
 import os
 import re

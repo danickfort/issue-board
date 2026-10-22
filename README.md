@@ -200,7 +200,7 @@ The board on screen reloads its issues every 5 seconds, so cards that others mov
 - It waits while something is in front of the board: a dialog, comments, the view dialog, the backlog, typing in the filter, expanded details, or a save in progress. It does not run during another load such as a board or sprint switch or `r`. Those cancel a refresh in flight. An answer for a board or sprint no longer shown, or one arriving after a dialog opened, is dropped.
 - If a refresh fails, the board keeps what it showed. The indicator turns red and the interval doubles up to 60 seconds (`↻ 10s`, `↻ 20s`, `↻ 40s`, `↻ 60s`). One notification gives the reason; further retries are silent. The next successful refresh, or a working `r`, returns to 5 seconds.
 
-YouTrack's REST API offers no way to push changes to a client, so the app polls. A refresh costs two small GET requests on boards of up to 100 issues. It continues while the terminal window is in the background; press `R` on boards you leave open and do not watch. Sources, live measurements and limits: [Auto-refresh](docs/research/auto-refresh.md).
+YouTrack's REST API offers no way to push changes to a client, so the app polls. A refresh costs two small GET requests on boards of up to 100 issues. It continues while the terminal window is in the background; press `R` on boards you leave open and do not watch.
 
 ## Workflow transitions
 
@@ -214,7 +214,7 @@ Enter applies the transition with the [documented payload](https://www.jetbrains
 
 `C` reads every comment on the selected issue that your account can see (`GET /api/issues/{id}/comments`, page by page). YouTrack applies comment visibility itself, so comments restricted to groups you are not in never reach the app. Comments you can see that are restricted are marked, for example "visible to Developers". Deleted comments are left out.
 
-Each comment shows its author, local time, whether it was edited, and a formatted Markdown body. Descriptions use the same renderer. Press `s` to see the source. Links print their address without becoming clickable; images show placeholders; HTML, diagrams and math stay readable as source. Nothing is fetched or executed. Author names and other metadata stay plain text, and terminal control characters are removed. See [Markdown support and limits](docs/research/markdown-support.md). While comments load, the dialog says so. An empty thread or a load error says so too, and `r` retries. If you close the dialog before the comments arrive, the late answer is discarded, and focus returns to the same card.
+Each comment shows its author, local time, whether it was edited, and a formatted Markdown body. Descriptions use the same renderer. Press `s` to see the source. Links print their address without becoming clickable; images show placeholders; HTML, diagrams and math stay readable as source. Nothing is fetched or executed. Author names and other metadata stay plain text, and terminal control characters are removed. While comments load, the dialog says so. An empty thread or a load error says so too, and `r` retries. If you close the dialog before the comments arrive, the late answer is discarded, and focus returns to the same card.
 
 ## GitLab merge requests
 
@@ -268,7 +268,7 @@ Rows show the ID (its prefix is the project), summary, the board's column value 
 
 The search box narrows the issues already loaded. It does not query YouTrack. While more pages remain, the status line says so, for example "3 of 50 loaded match · n searches 50 more". Each `n` adds a page, and the search applies to it as well.
 
-The backlog view says when YouTrack returns no backlog for the board: none is set, or possibly its saved search is not shared with you (the API does not tell these apart). It also says when the backlog is empty, and when YouTrack refuses the saved search (for example HTTP 403). Errors offer `r` to retry. If the saved search has no query, it would list every issue you can see, so it is not loaded. If a page fails, the loaded issues stay and `n` retries. Closing the backlog cancels requests that are still running, so a late answer never appears. If the backlog changes between pages, issues already shown are not repeated, but one can be skipped; press `r` to start again. The API evidence and layout choice are in [Backlog browsing](docs/research/backlog-browsing.md).
+The backlog view says when YouTrack returns no backlog for the board: none is set, or possibly its saved search is not shared with you (the API does not tell these apart). It also says when the backlog is empty, and when YouTrack refuses the saved search (for example HTTP 403). Errors offer `r` to retry. If the saved search has no query, it would list every issue you can see, so it is not loaded. If a page fails, the loaded issues stay and `n` retries. Closing the backlog cancels requests that are still running, so a late answer never appears. If the backlog changes between pages, issues already shown are not repeated, but one can be skipped; press `r` to start again.
 
 ## Assigning
 
@@ -309,7 +309,7 @@ It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devporta
 
 ## GitLab
 
-Choose GitLab for a folder in `issueboard`, or run `issueboard gitlab` inside a repository with a GitLab remote, or `issueboard gitlab --demo` to explore offline. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
+Choose GitLab for a folder in `issueboard`, or run `issueboard gitlab` inside a repository with a GitLab remote, or `issueboard gitlab --demo` to explore offline. [Usage](docs/gitlab-board.md).
 
 ## Jira
 
