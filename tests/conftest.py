@@ -47,6 +47,9 @@ def executable_script(monkeypatch):
     """
     paths = []
     native_run, native_async, native_which = subprocess.run, asyncio.create_subprocess_exec, shutil.which
+    # Windows venv python.exe is a redirector which creates another process.
+    # Use the base interpreter so the PID we cancel is the fixture's actual PID.
+    interpreter = getattr(sys, '_base_executable', sys.executable) if os.name == 'nt' else sys.executable
 
     def resolve(command):
         command = os.fspath(command)
@@ -57,12 +60,12 @@ def executable_script(monkeypatch):
 
     def run(args, *positional, **kwargs):
         if isinstance(args, (list, tuple)) and args and (path := resolve(args[0])):
-            args = [sys.executable, path, *args[1:]]
+            args = [interpreter, path, *args[1:]]
         return native_run(args, *positional, **kwargs)
 
     async def launch(program, *args, **kwargs):
         if path := resolve(program):
-            return await native_async(sys.executable, path, *args, **kwargs)
+            return await native_async(interpreter, path, *args, **kwargs)
         return await native_async(program, *args, **kwargs)
 
     def create(path, source):
