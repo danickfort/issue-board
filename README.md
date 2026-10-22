@@ -1,6 +1,29 @@
 # Issue Board
 
+[![Watch the Issue Board walkthrough: story moves, comments, merge requests and backlog](docs/media/board.png)](docs/media/walkthrough.mp4)
+
+[**▶ Watch the app walkthrough**](docs/media/walkthrough.mp4) — move a story between columns, open its details, read and post comments, inspect GitLab merge requests and browse the backlog. Recorded in xterm.js with fish, using the offline demo.
+
 A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud. Run `issueboard` in your project folder to open its board.
+
+<details>
+<summary>More screenshots: comments, merge requests and backlog</summary>
+
+Read formatted comments and reply without leaving the board.
+
+![A story’s comment thread with Markdown and visibility restrictions](docs/media/comments.png)
+
+See the story’s merge requests, pipelines, approvals and discussion status.
+
+![GitLab merge requests linked to a story, with pipeline and discussion status](docs/media/merge-requests.png)
+
+Search and page through the board’s backlog.
+
+![The Product team backlog in the terminal](docs/media/backlog.png)
+
+</details>
+
+To recreate these captures, see the [saved terminal and recording workflow](docs/captures.md).
 
 ## Installation
 

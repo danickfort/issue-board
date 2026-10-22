@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Issue Board · capture studio</title>
+<link rel="stylesheet" href="/xterm.css">
+<style>
+@font-face{font-family:CaptureMono;src:url('/font.ttf')}
+@font-face{font-family:CaptureSymbols;src:url('/symbols.ttf')}
+*{box-sizing:border-box}body{margin:0;background:#10131e;color:#cad3f5;font:16px system-ui,sans-serif;padding:26px 32px;height:100vh;overflow:hidden}header{display:flex;justify-content:space-between;align-items:center;margin:0 4px 20px}h1{font-size:23px;letter-spacing:-.5px;margin:0;color:#f4f5fa}header span{font-size:13px;color:#8bd5ca;letter-spacing:1px;text-transform:uppercase}.window{border:1px solid #363c52;border-radius:12px;background:#181926;overflow:hidden;box-shadow:0 20px 65px #0005}.bar{height:38px;border-bottom:1px solid #363c52;display:flex;align-items:center;gap:7px;padding:0 16px;background:#202334}.dot{height:9px;width:9px;border-radius:50%;background:#ed8796}.dot:nth-child(2){background:#eed49f}.dot:nth-child(3){background:#a6da95}.bar b{font-size:12px;font-weight:500;color:#939ab7;margin:auto}#terminal{padding:12px 14px;height:calc(100vh - 182px)}footer{display:flex;justify-content:space-between;align-items:center;height:48px;padding:0 4px}#chapter{color:#f4f5fa;font-weight:600;font-size:15px}#hint{color:#a5adcb;font-size:13px}.xterm-viewport{scrollbar-width:none}button{font:inherit;color:#8bd5ca;background:none;border:0;cursor:pointer}button:disabled{color:#6e738d}#controls{display:flex;gap:12px}.recording #controls{display:none}
+</style>
+<header><h1>Issue Board</h1><span>Keyboard driven. In your terminal.</span></header>
+<div class="window"><div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i><b>fish · xterm.js · offline demo</b></div><div id="terminal"></div></div>
+<footer><div><span id="chapter">Ready to explore</span><span id="hint"> &nbsp; YouTrack · GitLab · Jira</span></div><div id="controls"><button id="tour">Run walkthrough</button></div></footer>
+<script src="/xterm.js"></script><script src="/fit.js"></script><script src="/webgl.js"></script><script type="module" src="/client.js"></script>
+</html>
