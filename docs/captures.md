@@ -41,6 +41,14 @@ In T3 Code, use its collaborative preview tools:
 
 For another browser, record the same page with a browser/window recorder. Captions are part of the page. The tour hides its start button in captures. `capture.send(text)`, `capture.chapter(title, hint)` and `capture.screen()` support manual screenshots; changes to the app's key bindings or demo data may require updating `client.js`.
 
+## Faster tour with visible inputs
+
+Click **Faster tour + keys**, or launch `capture.fastWalkthrough().catch(console.error)` through the collaborative preview. This shorter cut keeps the same core workflow with shorter pauses and two mouse selections. Save its export as `docs/media/walkthrough-fast.mp4` to keep the original video.
+
+The header displays the last three keyboard inputs as keycaps, highlighting the latest key or Shift combination. Typed text is shown as a single input. Terminal clicks show a cursor, a teal pulse and a **Click** keycap. Both tour automation and manual terminal input use these indicators. The mouse actions travel through xterm.js's normal terminal mouse protocol; screen assertions verify that each selection changed in the app.
+
+Use the same 1440 × 960 viewport, wait for `capture.done`, take a final snapshot, then stop and export the recording. `capture.inputs` records input labels and timestamps in memory for timing checks. It is discarded on reload.
+
 ## Export and inspect
 
 ```sh
@@ -48,6 +56,17 @@ uv run --project tools/capture/media --frozen python tools/capture/media/export.
   /absolute/path/to/recording.webm docs/media/walkthrough.mp4
 ```
 
-The export uses H.264, YUV 4:2:0 and MP4 faststart for broad playback compatibility. It deliberately has no audio. Check the start, story move, saved comment, both MR selections, backlog and final board; captions and text should remain readable. Keep generated files small enough for the repository. Commit only the chosen PNG/MP4 assets, source tooling and lockfiles; downloaded binaries, environments and intermediate recordings are ignored.
+The export uses H.264, YUV 4:2:0 and MP4 faststart for broad playback compatibility. It deliberately has no audio. If the browser recorder omits the final rendered screen, pass `--end-frame /absolute/path/to/final-snapshot.png` to append a two-second hold of the actual final screenshot. Check the start, story move, saved comment, both MR selections, backlog and final board; captions and text should remain readable. Keep generated files small enough for the repository. Commit only the chosen PNG/WebP/MP4 assets, source tooling and lockfiles; downloaded binaries, environments and intermediate recordings are ignored.
+
+## Animated README preview
+
+The README embeds `docs/media/walkthrough.webp` and links it to the faster MP4. Generate the looping preview from the finished video:
+
+```sh
+uv run --project tools/capture/media --frozen python tools/capture/media/webp.py \
+  docs/media/walkthrough-fast.mp4 docs/media/walkthrough.webp
+```
+
+The exporter uses 1200-pixel width, 10 frames per second and lossless WebP encoding to preserve terminal text and key labels. Inspect the animation and its size before committing. Keep the MP4 as a smaller alternative with playback controls. GitHub's visitor motion settings may disable animation.
 
 [xterm.js documentation](https://xtermjs.org/docs/) · [fish documentation](https://fishshell.com/docs/current/) · [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)
