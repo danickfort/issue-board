@@ -4,22 +4,20 @@ A keyboard-driven GitLab issue board in the terminal. It shares the YouTrack boa
 
 ## Installation
 
-GitLab Board is part of [Issue Board](../README.md#installation), published in the private `danickfort/issue-board` repository. Install the unified application, then run `issueboard` in a project folder and choose GitLab, or run `gitlab-board` directly.
+GitLab Board is part of [Issue Board](../README.md#installation), published in the public `danickfort/issue-board` repository. Install the unified application, then run `issueboard` in a project folder and choose GitLab, or run `gitlab-board` directly.
 
 ```sh
-brew install gh glab
-gh auth login
-gh auth setup-git
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install danickfort/issueboard/issueboard
+brew install glab
+brew install danickfort/issueboard/issueboard
 ```
 
-Your GitHub account needs access to `danickfort/issue-board` and the `danickfort/homebrew-issueboard` tap. Skip GitHub login if already signed in with access. If a standalone YouTrack Board or GitLab Board formula is installed, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs both commands. Preferences and credentials are kept.
+These macOS downloads are public and need no GitHub login. For Linux, follow the [standalone installation instructions](../README.md#linux-standalone-download) and install glab with your distribution’s package manager. If a standalone YouTrack Board or GitLab Board formula is installed, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs both commands. Preferences and credentials are kept.
 
 To update or uninstall:
 
 ```sh
 brew update
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade danickfort/issueboard/issueboard
+brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 

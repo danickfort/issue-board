@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Build a source release and checksummed macOS Homebrew tap. Requires uv and network access to PyPI."""
+"""Prepare a source release and checksummed macOS Homebrew formula. Requires uv and network access to PyPI."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tomllib
 from urllib.parse import urlsplit
@@ -103,9 +104,10 @@ end
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/homebrew', help='directory for the generated tap')
+    parser.add_argument('--archive', type=Path, help='reuse the exact published source archive instead of rebuilding')
     parser.add_argument('--url', help='HTTPS URL where this exact source archive will be published; default: local archive')
     parser.add_argument('--homepage', help='HTTPS project homepage for a published formula')
-    parser.add_argument('--git-source', action='store_true', help='use --url as a private HTTPS Git source pinned to the current commit')
+    parser.add_argument('--git-source', action='store_true', help='use --url as an HTTPS Git source pinned to the current commit')
     args = parser.parse_args()
     if args.url and (urlsplit(args.url).scheme != 'https' or not urlsplit(args.url).hostname or urlsplit(args.url).username or urlsplit(args.url).password):
         parser.error('--url must be an HTTPS release URL without credentials')
@@ -131,8 +133,16 @@ def main():
             release = json.load(response)
         source = next(file for file in release['urls'] if file['packagetype'] == 'sdist')
         resources.append((name, source['url'], source['digests']['sha256']))
-    run('uv', 'build', '--sdist', '--out-dir', str(output / 'releases'))
     archive = output / 'releases' / f'issueboard-{metadata["version"]}.tar.gz'
+    if args.archive:
+        source = args.archive.resolve()
+        if not source.is_file() or source.name != archive.name:
+            parser.error(f'--archive must be an existing {archive.name}')
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if source != archive:
+            shutil.copy2(source, archive)
+    else:
+        run('uv', 'build', '--sdist', '--out-dir', str(output / 'releases'))
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
     target = output / 'Formula/issueboard.rb'
     target.parent.mkdir(exist_ok=True)

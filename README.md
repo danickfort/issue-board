@@ -4,23 +4,53 @@ A keyboard-driven issue board in the terminal, for YouTrack Agile boards, GitLab
 
 ## Installation
 
-Standalone Linux downloads are built automatically for version tags. macOS users can install with Homebrew below. See [release downloads and installation](docs/releases.md).
+Issue Board is public and available for macOS and Linux. No GitHub account or token is needed to download or install it.
 
-The repository and Homebrew tap are private. Your GitHub account needs access to both `danickfort/issue-board` and `danickfort/homebrew-issueboard`.
+### macOS: Homebrew
+
+With [Homebrew](https://brew.sh) installed:
 
 ```sh
-brew install gh
-gh auth login
-gh auth setup-git
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew install danickfort/issueboard/issueboard
+brew install danickfort/issueboard/issueboard
+issueboard
 ```
 
-The Homebrew tap is `danickfort/homebrew-issueboard`. If YouTrack Board or GitLab Board is installed with Homebrew, uninstall it first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Credentials, preferences and saved state are kept. GitLab boards also need glab: `brew install glab`.
-
-Skip `gh auth login` if already signed in to an account with access. The token is passed through the environment for the download; it is never embedded in the formula. Homebrew installs an isolated Python environment, so running the app needs no uv or source checkout.
+Or run `brew tap danickfort/issueboard`, then `brew install issueboard`. Homebrew installs Python and the app dependencies in an isolated environment; no uv or source checkout is needed.
 
 ```sh
-issueboard                    # the board of this project folder; asks the first time
+brew update
+brew upgrade danickfort/issueboard/issueboard
+brew uninstall issueboard
+```
+
+If the older YouTrack Board or GitLab Board formulas are installed, uninstall them first (`brew uninstall youtrack-board gitlab-board`): Issue Board installs their commands too. Preferences and credentials are preserved. Existing users of the private tap can run `brew update` and upgrade normally; GitHub authentication variables are no longer required.
+
+### Linux: standalone download
+
+Download the Linux x86_64 archive and its `.sha256` file from [the latest release](https://github.com/danickfort/issue-board/releases/latest). It includes Python and the app dependencies. It requires glibc 2.35+ (for example Ubuntu 22.04+); ARM and Alpine/musl are not supported by this archive.
+
+For version 0.3.1:
+
+```sh
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.1/issueboard-0.3.1-linux-x86_64.tar.gz
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.1/issueboard-0.3.1-linux-x86_64.tar.gz.sha256
+sha256sum -c issueboard-0.3.1-linux-x86_64.tar.gz.sha256
+tar -xzf issueboard-0.3.1-linux-x86_64.tar.gz
+mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
+mv issueboard-0.3.1-linux-x86_64 "$HOME/.local/opt/"
+for command in issueboard youtrack-board gitlab-board jira-board; do
+  ln -sfn "$HOME/.local/opt/issueboard-0.3.1-linux-x86_64/$command" "$HOME/.local/bin/$command"
+done
+export PATH="$HOME/.local/bin:$PATH"
+issueboard --demo youtrack
+```
+
+Keep the whole extracted folder, including `_internal`. Add the PATH line to your shell configuration if `~/.local/bin` is not already on PATH. For updates, install the new version in `~/.local/opt` and repoint the four links. To uninstall, remove those links and the extracted folder. Preferences and credentials are preserved. The Homebrew formula currently supports macOS only.
+
+### Run a board
+
+```sh
+issueboard                    # this folder's board; asks the first time
 issueboard --setup            # choose this folder's tracker and board again
 issueboard --demo youtrack    # or: issueboard --demo gitlab, issueboard --demo jira
 youtrack-board --setup --open # replace the saved YouTrack connection
@@ -28,15 +58,9 @@ youtrack-board --auth-status
 jira-board --setup            # sign in to a Jira Cloud site
 ```
 
-Update and remove it with:
+GitLab boards require [glab](https://gitlab.com/gitlab-org/cli) and its own sign-in; on macOS use `brew install glab`, or on Linux install it with your distribution's package manager. YouTrack and Jira use the OS credential store; on Linux, a working Secret Service or KWallet session is needed to save tokens.
 
-```sh
-brew update
-HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade danickfort/issueboard/issueboard
-brew uninstall issueboard
-```
-
-Uninstalling preserves your preferences and credentials. Run `youtrack-board --logout` and `jira-board --logout` before uninstalling to also remove the apps' saved tokens. Existing MCP credentials are never changed. [Homebrew release and development instructions](docs/homebrew.md).
+Uninstalling preserves your preferences and credentials. Run `youtrack-board --logout` and `jira-board --logout` before uninstalling to remove the apps' saved tokens. Existing MCP credentials are never changed. [Homebrew maintenance](docs/homebrew.md) and [release instructions](docs/releases.md).
 
 ## One board per project folder
 
@@ -54,7 +78,7 @@ Later starts in that folder open the saved board directly. `issueboard --setup` 
 
 ## Try the demo
 
-After installing with Homebrew, run:
+After installing, run:
 
 ```sh
 issueboard --demo youtrack
@@ -70,7 +94,7 @@ The demo includes multiple projects and boards. *Services desk* demonstrates pro
 
 ## Connect to YouTrack
 
-After installing with Homebrew, start the app:
+After installing, start the app:
 
 ```sh
 youtrack-board
@@ -287,7 +311,7 @@ The panel records app status, warnings and errors, and network request methods, 
 
 ## Development
 
-This section is for running or changing the source code. Homebrew users can skip it. A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+This section is for running or changing the source code. Users of Homebrew or the standalone Linux package can skip it. A source checkout requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 From the repository directory:
 
