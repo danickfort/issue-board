@@ -11,7 +11,7 @@ brew install glab
 brew install danickfort/issueboard/issueboard
 ```
 
-These macOS downloads are public and need no GitHub login. For Linux, follow the [standalone installation instructions](../README.md#linux-standalone-download) and install glab with your distribution’s package manager. If a standalone YouTrack Board or GitLab Board formula is installed, you can remove it with `brew uninstall youtrack-board gitlab-board`. Only `issueboard` is installed; use `issueboard gitlab` for GitLab-specific options. Preferences and credentials are kept.
+These macOS downloads are public and need no GitHub login. For Linux, follow the [standalone installation instructions](../README.md#linux-download-and-run) and install glab with your distribution’s package manager. If a standalone YouTrack Board or GitLab Board formula is installed, you can remove it with `brew uninstall youtrack-board gitlab-board`. Only `issueboard` is installed; use `issueboard gitlab` for GitLab-specific options. Preferences and credentials are kept.
 
 To update or uninstall:
 

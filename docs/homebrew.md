@@ -53,4 +53,4 @@ Use the exact published archive: rebuilding from a different checkout can produc
 
 Uninstall a local development formula before installing the public formula with the same name. Avoid overwriting the published tap with a formula that points to a machine-local archive.
 
-The formula supports macOS source installation; no bottles or Linux formula are provided. Linux users should use the [standalone release archive](../README.md#linux-standalone-download). Homebrew documents [tap installation](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap) and [Python applications](https://docs.brew.sh/Python-for-Formula-Authors).
+The formula supports macOS source installation; no bottles or Linux formula are provided. Linux users should use the [standalone release archive](../README.md#linux-download-and-run). Homebrew documents [tap installation](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap) and [Python applications](https://docs.brew.sh/Python-for-Formula-Authors).

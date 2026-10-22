@@ -1,6 +1,6 @@
 # Issue Board
 
-A keyboard-driven issue board in the terminal, for YouTrack Agile boards, GitLab issue boards and Jira Cloud boards, built with Python and Textual. One command, `issueboard`, opens the right board for the project folder you are in. Use `issueboard youtrack`, `issueboard gitlab` or `issueboard jira` for tracker-specific options. Only the `issueboard` executable is installed.
+A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud. Run `issueboard` in your project folder to open its board.
 
 ## Installation
 
@@ -23,29 +23,16 @@ brew upgrade danickfort/issueboard/issueboard
 brew uninstall issueboard
 ```
 
-Older standalone YouTrack Board and GitLab Board formulas are no longer needed; you can uninstall them with `brew uninstall youtrack-board gitlab-board`. Preferences and credentials are preserved. Existing users of the private tap can run `brew update` and upgrade normally; GitHub authentication variables are no longer required.
+### Linux: download and run
 
-### Linux: standalone download
-
-Download the Linux x86_64 archive and its `.sha256` file from [the latest release](https://github.com/danickfort/issue-board/releases/latest). It includes Python and the app dependencies. It requires glibc 2.35+ (for example Ubuntu 22.04+); ARM and Alpine/musl are not supported by this archive.
-
-For version 0.3.3:
+Download the Linux x86_64 `.tar.gz` from [the latest release](https://github.com/danickfort/issue-board/releases/latest), then unpack and run it:
 
 ```sh
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.3/issueboard-0.3.3-linux-x86_64.tar.gz
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.3/issueboard-0.3.3-linux-x86_64.tar.gz.sha256
-sha256sum -c issueboard-0.3.3-linux-x86_64.tar.gz.sha256
 tar -xzf issueboard-0.3.3-linux-x86_64.tar.gz
-mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-mv issueboard-0.3.3-linux-x86_64 "$HOME/.local/opt/"
-ln -sfn "$HOME/.local/opt/issueboard-0.3.3-linux-x86_64/issueboard" "$HOME/.local/bin/issueboard"
-export PATH="$HOME/.local/bin:$PATH"
-issueboard --demo youtrack
+./issueboard-0.3.3-linux-x86_64/issueboard
 ```
 
-Keep the whole extracted folder, including `_internal`. Add the PATH line to your shell configuration if `~/.local/bin` is not already on PATH. For updates, install the new version in `~/.local/opt` and repoint the `issueboard` link. To uninstall, remove that link and the extracted folder. Preferences and credentials are preserved. The Homebrew formula currently supports macOS only.
-
-If upgrading a Linux archive installation from 0.3.1, remove the old `youtrack-board`, `gitlab-board` and `jira-board` symlinks from `~/.local/bin`; the new archive supplies only `issueboard`. Homebrew upgrades remove the previous formula-owned links automatically.
+Python and dependencies are included. Requires glibc 2.35+ (for example Ubuntu 22.04+). Keep the extracted folder together.
 
 ### Run a board
 
@@ -67,9 +54,9 @@ Uninstalling preserves your preferences and credentials. Run `issueboard youtrac
 The first time `issueboard` starts in a folder, it asks whether the folder's issues are in YouTrack, GitLab or Jira, then sets that up and remembers the board:
 
 - **The folder** is the root of the Git checkout you are in, so all its subfolders share one choice, and each Git worktree has its own. Outside Git, it is the current folder.
-- **The suggestion** comes from local clues only, each listed with the question: YouTrack Board already showing merge requests of this checkout's GitLab repository, GitLab Board having opened this project's boards, or a branch name with an issue key such as `WEB-12` whose project another folder already opens a Jira board of. A GitLab remote alone suggests nothing: YouTrack and Jira projects often keep their code on GitLab. Nor does an issue key alone: YouTrack and Jira write them the same way. When the clues disagree, or there are none, nothing is preselected. Either way you confirm the choice, with Enter for a suggestion or a number.
+- **The suggestion** comes from local clues only, each listed with the question: a saved link between this checkout's GitLab repository and a YouTrack project, previously opened GitLab boards for this project, or a branch name with an issue key such as `WEB-12` whose project another folder already opens a Jira board of. A GitLab remote alone suggests nothing: YouTrack and Jira projects often keep their code on GitLab. Nor does an issue key alone: YouTrack and Jira write them the same way. When the clues disagree, or there are none, nothing is preselected. Either way you confirm the choice, with Enter for a suggestion or a number.
 - **Searchable choices.** Project and board lists filter as you type, using fuzzy matching (for example, `prdtm` finds “Product team”). Use ↑/↓ to highlight a match, Enter to select it, and Esc to cancel without saving. Clear the search to see the full list again.
-- **YouTrack** signs in exactly with `issueboard youtrack` ([credentials](#connect-to-youtrack)), then asks for a project (or All projects) and a board.
+- **YouTrack** signs in with `issueboard youtrack` ([credentials](#connect-to-youtrack)), then asks for a project (or All projects) and a board.
 - **Jira** signs in with `issueboard jira` ([credentials](docs/jira-board.md#connect-to-jira-cloud)) and uses that site (run `issueboard jira --setup` first for another one), then asks for one of your recent projects, a typed project key or All projects, and a board.
 - **GitLab** offers the checkout's GitLab remotes, or a project, group or board URL you type, then checks that glab is signed in to that host. If it is not, it offers to run `glab auth login --hostname <host>`, which keeps the token in glab. Then it asks for the board.
 - **Nothing is saved** until setup succeeds. Ctrl+C, Ctrl+D, a declined sign-in or a failed check leaves the folder's previous choice, if any, as it was.
@@ -86,7 +73,7 @@ issueboard --demo gitlab
 issueboard --demo jira
 ```
 
-The tracker subcommands also accept `--demo`. The YouTrack demo is described here, the GitLab demo in [GitLab Board](docs/gitlab-board.md). The Jira demo has a scrum board with several statuses per column and a 60-issue backlog, a kanban board with an empty column and a sub-filter, a scrum board without an active sprint, a formatted description (WEB-1, `Enter`), comments with a role restriction (WEB-3), and a *Done* transition that asks for the resolution.
+The tracker subcommands also accept `--demo`. The YouTrack demo is described here, the GitLab demo in [GitLab](docs/gitlab-board.md). The Jira demo has a scrum board with several statuses per column and a 60-issue backlog, a kanban board with an empty column and a sub-filter, a scrum board without an active sprint, a formatted description (WEB-1, `Enter`), comments with a role restriction (WEB-3), and a *Done* transition that asks for the resolution.
 
 No YouTrack account or credentials are needed. To run from a source checkout instead, see [Development](#development).
 
@@ -109,7 +96,7 @@ Create the token in **Profile → Account Security → Tokens** with the **YouTr
 The first source that has credentials is used. A URL and its token always come from the same source, and a token is only ever sent to the URL it came with.
 
 1. **Environment**: `YOUTRACK_URL` and `YOUTRACK_TOKEN`, both set. They are used for that session and never saved. If only one is set, the app stops and names the missing one rather than combining it with another source. If YouTrack rejects the token, the app stops; fix or unset the variables.
-2. **Saved by this app**: the URL in `$XDG_CONFIG_HOME/youtrack-board/config.json` (or `~/.config/youtrack-board/config.json`), and the token in the OS credential store under the service `youtrack-board`, keyed by that URL. On macOS this is your login keychain; Keychain Access lists it as "youtrack-board".
+2. **Saved by this app**: the instance URL in your local configuration, and the token in the OS credential store, keyed by that URL. On macOS this is your login keychain.
 3. **A YouTrack MCP server you already set up for Codex or Claude Code**: an entry in `~/.codex/config.toml` (`[mcp_servers.<name>.env]`) or `~/.claude.json` (`mcpServers.<name>.env`) that sets both `YOUTRACK_URL` and `YOUTRACK_TOKEN`. The entry is read in place on each start. It is not copied, and those files are never changed. The same URL and token in both files count as one. If there are several different entries, setup asks which one to use and saves your choice as in step 2.
 4. Otherwise, setup runs.
 
@@ -208,7 +195,7 @@ Each comment shows its author, local time, whether it was edited, and a formatte
 
 `g` lists the open GitLab merge requests (MRs) that name the selected story, with their status. It only reads: nothing is merged, approved, rebased or rerun.
 
-Available in **YouTrack Board 0.1.2 and later**; `G`, `i` and the review details below need **0.1.3**. Update your Homebrew installation using the commands above, then restart the app. MR lookup requires the GitLab CLI: `brew install glab`, then `glab auth login --hostname <your-gitlab-host>`.
+MR lookup requires the GitLab CLI: `brew install glab`, then `glab auth login --hostname <your-gitlab-host>`.
 
 **Requirements.** The [GitLab CLI](https://gitlab.com/gitlab-org/cli) (`glab`), signed in to your GitLab host. The board uses glab's own sign-in and never asks for, reads or stores a GitLab token. It starts without glab; only `g` needs it.
 
@@ -219,13 +206,13 @@ glab auth login --hostname gitlab.example.com   # your GitLab host
 
 **First use per project.** `g` asks for the GitLab repository of the story's project, once per YouTrack project. Paste the project's URL as the browser shows it, for example `https://gitlab.example.com/group/subgroup/app`; any page of the project, or its https clone URL, works too. The app asks GitLab, through glab, whether you can see that project, and saves it only if you can. If glab is missing, it says how to install it before asking. If glab is not signed in, or the project is unknown, the panel says so and nothing is saved. Press `u` in the panel to choose another repository; the dialog starts from the current one.
 
-**Started inside a code checkout** (0.1.3 and later). When the board starts in a Git checkout whose remote is a GitLab project on a host glab is signed in to, the first `g` on a story whose project has no repository uses that project instead of asking. It finds the remote the way the [GitLab board](docs/gitlab-board.md#start-inside-a-code-checkout) does: HTTPS and SSH remotes, nested groups, SSH host aliases, subfolders and worktrees. The project is checked through glab and saved like a typed URL, for that story's YouTrack project only; other projects on the same board keep their own choice. A saved repository always wins and is never replaced from the checkout. The app asks instead when the remotes name several GitLab projects (a fork and its upstream, for example), and the URL dialog opens, filled in, when the repository is already linked to another YouTrack project. Without a GitLab remote, or outside a checkout, `g` asks for the URL as above. Looking at the checkout only reads `git remote -v`, the Git config and the SSH config; Git, glab, YouTrack and GitLab settings are never changed.
+**Started inside a code checkout.** When the board starts in a Git checkout whose remote is a GitLab project on a host glab is signed in to, the first `g` on a story whose project has no repository uses that project instead of asking. It finds the remote the way the [GitLab board](docs/gitlab-board.md#start-inside-a-code-checkout) does: HTTPS and SSH remotes, nested groups, SSH host aliases, subfolders and worktrees. The project is checked through glab and saved like a typed URL, for that story's YouTrack project only; other projects on the same board keep their own choice. A saved repository always wins and is never replaced from the checkout. The app asks instead when the remotes name several GitLab projects (a fork and its upstream, for example), and the URL dialog opens, filled in, when the repository is already linked to another YouTrack project. Without a GitLab remote, or outside a checkout, `g` asks for the URL as above. Looking at the checkout only reads `git remote -v`, the Git config and the SSH config; Git, glab, YouTrack and GitLab settings are never changed.
 
 **What is listed.** Open MRs of that repository whose **title, source branch or description** contains the story ID as a whole word, ignoring case. This is the rule YouTrack's own GitLab integration uses. `DEMO-1` matches `[DEMO-1] Fix` and `feature/demo-1-fix`, never `DEMO-10` or `XDEMO-1`. MRs from forks count, since they target the repository. Each MR says where it names the story.
 
 Not found: MRs in other repositories, MRs that mention the story only in a comment or commit message, and MRs you cannot see in GitLab. Only the first 500 open MRs of the repository are searched, and the panel says so when a repository has more. A repository URL alone cannot prove that an MR belongs to a story, so this is a text match, labelled as one. YouTrack's own MR links (`GET /api/issues/{id}/vcsChanges`, `PullRequest` entries) were checked and are not used: on the server checked, its GitLab integration records commits only. Details: [docs/plans/linked-merge-requests.md](docs/plans/linked-merge-requests.md).
 
-**The panel.** Each MR shows its reference (`!12`, or `group/project!12` for another project), title, and what stands between it and a merge: draft, pipeline (passed, failed, running…, or "no pipeline"), GitLab's merge status ("ready to merge", "needs approval", "conflicts"…, or "not checked yet" while GitLab has not computed it), and approvals on GitLab Premium. Each MR lists its source branch. The selected MR's source and target branches appear at the top of its details, with fork and update information below. Since 0.1.3, the panel also shows each MR's author, assignees and reviewers, whether auto-merge is set, its number of comments, and how many of its resolvable threads are resolved or unresolved; GitLab's system activity is not counted, and ordinary comments cannot be resolved. `PgUp` and `PgDn` scroll the selected MR's details. `Enter` or `o` opens the MR in your browser, only if its address is an MR page on that GitLab host. `r` reloads, `u` changes the repository, Escape, `g` or `G` returns to the card. MRs are read when the panel opens and on `r`, never by auto-refresh. Closing the panel stops a request still running.
+**The panel.** Each MR shows its reference (`!12`, or `group/project!12` for another project), title, and what stands between it and a merge: draft, pipeline (passed, failed, running…, or "no pipeline"), GitLab's merge status ("ready to merge", "needs approval", "conflicts"…, or "not checked yet" while GitLab has not computed it), and approvals on GitLab Premium. Each MR lists its source branch. The selected MR's source and target branches appear at the top of its details, with fork and update information below. The panel also shows each MR's author, assignees and reviewers, whether auto-merge is set, its number of comments, and how many of its resolvable threads are resolved or unresolved; GitLab's system activity is not counted, and ordinary comments cannot be resolved. `PgUp` and `PgDn` scroll the selected MR's details. `Enter` or `o` opens the MR in your browser, only if its address is an MR page on that GitLab host. `r` reloads, `u` changes the repository, Escape, `g` or `G` returns to the card. MRs are read when the panel opens and on `r`, never by auto-refresh. Closing the panel stops a request still running.
 
 **All open MRs.** `G` lists every open MR of the repository of the selected story's project (without a selected story: the project chosen with `p`, or the board's only project), most recently updated first, as GitLab sorts them. The repository is the one `g` uses, asked for the same way the first time. MRs are read 50 at a time, up to the 500 most recently updated; the panel says when there are more. Each MR says which stories it names.
 
@@ -287,7 +274,7 @@ The app remembers, per YouTrack URL: when you last opened each board (the 50 mos
 
 This is a local view only. Nothing is written to YouTrack, and the board's shared configuration (columns, swimlanes, sprints) is never changed. Change shared board settings in YouTrack itself.
 
-The file is `$XDG_STATE_HOME/youtrack-board/state.json`, or `~/.local/state/youtrack-board/state.json`. It contains IDs, timestamps, column names and repository URLs, never tokens. Each save rewrites only this server's section and replaces the file atomically. Values of the wrong type are ignored. If the file cannot be read, it is moved to `state.json.corrupt`, a warning appears, and the app starts fresh. Deleting the file resets everything.
+Saved state is stored under `$XDG_STATE_HOME` (default `~/.local/state`). It contains IDs, timestamps, column names and repository URLs, never tokens. Each save rewrites only this server's section and replaces the file atomically. Values of the wrong type are ignored. If the file cannot be read, it is moved to `state.json.corrupt`, a warning appears, and the app starts fresh. Deleting the file resets everything.
 
 ## Scope
 
@@ -295,13 +282,13 @@ This version shows board or sprint members in configured status columns. Project
 
 It uses the [YouTrack REST API](https://www.jetbrains.com/help/youtrack/devportal/youtrack-rest-api.html) directly. A separate CLI would add installation and output-format coupling for this small feature set. Board and sprint lists and issue searches are paginated. Boards with sprints disabled use `has: {Board <name>}`; sprint membership uses the documented [board search attribute](https://www.jetbrains.com/help/youtrack/cloud/search-and-command-attributes.html#board-name). Names containing braces, backslashes, or newlines are rejected rather than interpolated into a query.
 
-## GitLab Board
+## GitLab
 
-Issue Board includes GitLab Board. Choose GitLab for a folder in `issueboard`, or run `issueboard gitlab` inside a repository with a GitLab remote, or `issueboard gitlab --demo` to explore offline. Its separate [repository](https://github.com/krabilousse/gitlab-board) and `gitlab-board` formula are superseded by Issue Board. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
+Choose GitLab for a folder in `issueboard`, or run `issueboard gitlab` inside a repository with a GitLab remote, or `issueboard gitlab --demo` to explore offline. [Usage](docs/gitlab-board.md), [GitLab findings](docs/research/gitlab-board.md).
 
-## Jira Board
+## Jira
 
-Issue Board includes Jira Board for Jira Cloud. Choose Jira for a folder in `issueboard`, or run `issueboard jira`, or `issueboard jira --demo` to explore offline. [Usage, credentials and limits](docs/jira-board.md).
+Choose Jira Cloud for a folder in `issueboard`, or run `issueboard jira`, or `issueboard jira --demo` to explore offline. [Usage, credentials and limits](docs/jira-board.md).
 
 ## Diagnostic logs
 
