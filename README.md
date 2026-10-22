@@ -2,7 +2,7 @@
 
 [![Issue Board walkthrough with visible keyboard presses and click highlights](docs/media/walkthrough.webp)](docs/media/walkthrough-fast.mp4)
 
-[**▶ Watch or download the MP4 (39 seconds)**](docs/media/walkthrough-fast.mp4) — move a story between columns, open its details, read and post comments, inspect GitLab merge requests and browse the backlog. Keyboard presses and clicks are highlighted. Recorded in xterm.js with fish, using the offline demo.
+[**▶ Watch or download the MP4 (39 seconds)**](docs/media/walkthrough-fast.mp4) — move a story between columns, open its details, read and post comments, inspect GitLab merge requests and browse the backlog. Keyboard presses and clicks are highlighted.
 
 A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud. Run `issueboard` in your project folder to open its board.
 
@@ -22,8 +22,6 @@ Search and page through the board’s backlog.
 ![The Product team backlog in the terminal](docs/media/backlog.png)
 
 </details>
-
-To recreate these captures, see the [saved terminal and recording workflow](docs/captures.md).
 
 ## Installation
 
