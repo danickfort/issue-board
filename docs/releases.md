@@ -19,8 +19,8 @@ For an archive, extract the entire folder and run `./issueboard-<version>-<platf
 3. Tag that commit and push the tag:
 
    ```sh
-   git tag -a v0.3.2 -m 'Issue Board 0.3.2'
-   git push origin v0.3.2
+   git tag -a v0.3.3 -m 'Issue Board 0.3.3'
+   git push origin v0.3.3
    ```
 
 Use the actual new version. The workflow rejects a tag that differs from `pyproject.toml`. GitHub Actions must be enabled and repository policy must permit the publishing job's `contents: write` permission. Only the built-in `GITHUB_TOKEN` is needed; no personal token or extra release secrets are required. Existing releases are never overwritten. If an upload fails after creating a draft, inspect and delete the incomplete draft before rerunning the workflow.

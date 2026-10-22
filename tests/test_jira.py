@@ -413,7 +413,7 @@ def test_the_command_line_reports_auth_status_and_never_opens_without_credential
     main(['--auth-status'])
     assert 'richemont.atlassian.net as Ext Dev' in capsys.readouterr().out
     als(monkeypatch, None)
-    with pytest.raises(SystemExit, match='jira-board: No usable Jira credentials'):
+    with pytest.raises(SystemExit, match='issueboard jira: No usable Jira credentials'):
         main(['--auth-status'])
 
 

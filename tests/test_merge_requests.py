@@ -396,11 +396,10 @@ def test_the_youtrack_board_starts_without_gitlab_code():
     assert out.strip() == '[]'
 
 
-def test_the_package_ships_issueboard_and_every_board():
-    """Built artifacts (wheel and sdist) hold the whole GitLab package: g imports part of it, gitlab-board the rest."""
+def test_the_package_ships_one_command_and_every_backend():
+    """One installed executable, with all backend modules included in built artifacts."""
     project = tomllib.loads((Path(__file__).parent.parent / 'pyproject.toml').read_text())
-    assert project['project']['scripts'] == {'issueboard': 'issueboard.app:main', 'youtrack-board': 'youtrack_board.app:main',
-                                            'gitlab-board': 'gitlab_board.app:main', 'jira-board': 'jira_board.app:main'}
+    assert project['project']['scripts'] == {'issueboard': 'issueboard.app:main'}
     for kind, build in project['tool']['hatch']['build']['targets'].items():
         assert {'issueboard', 'youtrack_board', 'gitlab_board', 'jira_board'} <= set(build['include']), kind
 

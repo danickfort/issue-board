@@ -29,16 +29,16 @@ Older standalone YouTrack Board and GitLab Board formulas are no longer needed; 
 
 Download the Linux x86_64 archive and its `.sha256` file from [the latest release](https://github.com/danickfort/issue-board/releases/latest). It includes Python and the app dependencies. It requires glibc 2.35+ (for example Ubuntu 22.04+); ARM and Alpine/musl are not supported by this archive.
 
-For version 0.3.2:
+For version 0.3.3:
 
 ```sh
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.2/issueboard-0.3.2-linux-x86_64.tar.gz
-curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.2/issueboard-0.3.2-linux-x86_64.tar.gz.sha256
-sha256sum -c issueboard-0.3.2-linux-x86_64.tar.gz.sha256
-tar -xzf issueboard-0.3.2-linux-x86_64.tar.gz
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.3/issueboard-0.3.3-linux-x86_64.tar.gz
+curl -fLO https://github.com/danickfort/issue-board/releases/download/v0.3.3/issueboard-0.3.3-linux-x86_64.tar.gz.sha256
+sha256sum -c issueboard-0.3.3-linux-x86_64.tar.gz.sha256
+tar -xzf issueboard-0.3.3-linux-x86_64.tar.gz
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-mv issueboard-0.3.2-linux-x86_64 "$HOME/.local/opt/"
-ln -sfn "$HOME/.local/opt/issueboard-0.3.2-linux-x86_64/issueboard" "$HOME/.local/bin/issueboard"
+mv issueboard-0.3.3-linux-x86_64 "$HOME/.local/opt/"
+ln -sfn "$HOME/.local/opt/issueboard-0.3.3-linux-x86_64/issueboard" "$HOME/.local/bin/issueboard"
 export PATH="$HOME/.local/bin:$PATH"
 issueboard --demo youtrack
 ```
