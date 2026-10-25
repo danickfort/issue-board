@@ -13,6 +13,11 @@ updates:
     groups:
       uv-minor-and-patch:
         update-types: [minor, patch]
+      uv-major:
+        update-types: [major]
+      uv-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -25,4 +30,7 @@ updates:
       default-days: 3
     groups:
       github-actions:
+        patterns: ["*"]
+      github-actions-security:
+        applies-to: security-updates
         patterns: ["*"]
