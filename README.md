@@ -49,8 +49,8 @@ brew uninstall issueboard
 Download the Linux x86_64 `.tar.gz` from [the latest release](https://github.com/danickfort/issue-board/releases/latest), then unpack and run it:
 
 ```sh
-tar -xzf issueboard-0.3.3-linux-x86_64.tar.gz
-./issueboard-0.3.3-linux-x86_64/issueboard
+tar -xzf issueboard-0.3.4-linux-x86_64.tar.gz
+./issueboard-0.3.4-linux-x86_64/issueboard
 ```
 
 Python and dependencies are included. Requires glibc 2.35+ (for example Ubuntu 22.04+). Keep the extracted folder together.
