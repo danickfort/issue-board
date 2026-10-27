@@ -49,7 +49,7 @@ more-itertools==11.2.1
     #   jaraco-functools
 platformdirs==4.13.5
     # via textual
-pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' and sys_platform == 'linux'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' and sys_platform == 'linux'
     # via cffi
 pygments==2.21.0
     # via
