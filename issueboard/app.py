@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 from rich.text import Text
 from textual.app import App
@@ -305,8 +306,9 @@ def setup_gitlab(found):
     return {'backend': 'gitlab', 'board': f'https://{start.host}/{key}'}, version
 
 
-def open_youtrack(choice, verbose, signed=None):
-    account, connection = signed or credentials.connect(interactive=sys.stdin.isatty())
+def open_youtrack(choice, verbose, signed=None, folder=os.curdir, interactive=True):
+    """The folder's board, signed in, not yet running. folder: the checkout whose remotes may name GitLab repositories."""
+    account, connection = signed or credentials.connect(interactive=interactive and sys.stdin.isatty())
     if credentials.normalize(choice['url']) != credentials.normalize(account.url):
         # The token only works on its own server, and that server's boards are not this folder's.
         raise credentials.SetupError(
@@ -318,25 +320,111 @@ def open_youtrack(choice, verbose, signed=None):
     prefs = youtrack_app.Prefs(default_path('youtrack-board'), client.base_url)
     prefs.data['project'] = choice.get('project') if isinstance(choice.get('project'), str) else None
     prefs.visit(choice['board'])  # the most recently opened board in the scope is the one that opens
-    youtrack_app.BoardApp(client, prefs, connection, cwd=os.curdir, verbose=verbose).run()
+    return youtrack_app.BoardApp(client, prefs, connection, cwd=folder, verbose=verbose)
 
 
-def open_jira(choice, verbose, signed=None):
+def open_jira(choice, verbose, signed=None, folder=os.curdir, interactive=True):
     # Only credentials for the folder's own site: a token is never sent to another Jira.
-    account, connection = signed or jira_credentials.connect(choice['url'], interactive=sys.stdin.isatty())
+    account, connection = signed or jira_credentials.connect(choice['url'], interactive=interactive and sys.stdin.isatty())
     client = Jira(account.url, account.email, account.token)
     prefs = jira_app.Prefs(default_path('jira-board'), client.base_url)
     prefs.data['project'] = choice.get('project') if isinstance(choice.get('project'), str) else None
     prefs.visit(choice['board'])  # the most recently opened board is the one that opens
-    jira_app.JiraApp(client, prefs, connection, verbose=verbose).run()
+    return jira_app.JiraApp(client, prefs, connection, cwd=folder, verbose=verbose)
 
 
-def open_gitlab(choice, verbose, version=None):
+def open_gitlab(choice, verbose, version=None, folder=None, interactive=True):
+    """glab is only checked, never signed in from here: setup (issueboard --setup) offers that."""
     start = target.parse(choice['board'])
     target.filters(start.params)
     version = version or glab.check(start.host)
     prefs = gitlab_app.Prefs(default_path('gitlab-board'), start.host)
-    gitlab_app.GitLabApp(GitLab(start.host), prefs, version, start, verbose=verbose).run()
+    return gitlab_app.GitLabApp(GitLab(start.host), prefs, version, start, verbose=verbose)
+
+
+ERRORS = (Cancelled, credentials.SetupError, YouTrackError, GlabError, target.TargetError, jira_credentials.SetupError,
+          JiraError, OSError)
+
+
+def place_choices(current):
+    """Picker choices for P: every valid saved folder, with its tracker, board and server. A folder that is gone cannot
+    be picked, and stays saved. Raises SystemExit, as at start, when the folder list is unreadable."""
+    directories, choices = read_directories(), []
+    for folder in sorted(directories, key=lambda f: (os.path.basename(f).casefold(), f)):
+        choice = saved_choice(directories, folder)
+        if not choice:
+            continue
+        if choice['backend'] == 'gitlab':
+            try:
+                start = target.parse(choice['board'])
+            except target.TargetError:
+                continue
+            board, server = start.path + (f' board {start.board}' if start.board else ''), start.host
+        else:
+            board, server = choice.get('name') or choice['board'], urlsplit(choice['url']).netloc
+        missing = not os.path.isdir(folder)
+        note = '  (current)' if folder == current else '  · folder not found' if missing else ''
+        name = os.path.basename(folder) or folder
+        choices.append((folder, Text.assemble((plain(name), 'bold'), f'  {BACKENDS[choice["backend"]]} · {plain(board)}',
+                                              (f'  {server} · {plain(folder)}{note}', 'dim')),
+                        f'{name} {BACKENDS[choice["backend"]]} {board} {server} {folder}'.casefold(),
+                        folder == current or missing))
+    return choices
+
+
+def open_place(folder, choice, verbose, signed=None, interactive=True):
+    opener = {'youtrack': open_youtrack, 'jira': open_jira}.get(choice['backend'], open_gitlab)
+    app = opener(choice, verbose, signed, folder=folder, interactive=interactive)
+    app.folder, app.places = folder, place_choices
+    theme = choice.get('theme')
+    if isinstance(theme, str) and app.get_theme(theme) is not None:
+        app.theme = theme
+    return app
+
+
+def save_theme(folder, theme):
+    try:
+        directories = read_directories()
+        choice = saved_choice(directories, folder)
+        if choice is not None and choice.get('theme') != theme:
+            choice['theme'] = theme
+            write_json(config_path(), {'directories': directories})
+    except (OSError, SystemExit) as exc:
+        print(f'Could not save this place’s theme: {exc}', file=sys.stderr)
+
+
+def switch(folder, verbose):
+    """Another saved folder's board, signed in without asking: (folder, choice, app), or the reason it cannot open."""
+    try:
+        choice = saved_choice(read_directories(), folder)
+        if not choice:
+            return f'{folder} no longer has a saved board. Run issueboard there to choose one.'
+        if not os.path.isdir(folder):
+            return f'{folder} is not there any more. Its saved board is kept; nothing else was changed.'
+        return folder, choice, open_place(folder, choice, verbose, interactive=False)
+    except (*ERRORS, SystemExit) as exc:
+        return str(exc).removeprefix('issueboard: ')
+
+
+def run_places(folder, choice, verbose, signed):
+    """Run the folder's board; when P picks another saved folder, its board replaces this one. The old board has
+    exited by then (its requests cancelled, client closed, logs detached). If the other one cannot open, the previous
+    place opens again with the reason. Each place keeps its own theme."""
+    app = open_place(folder, choice, verbose, signed)
+    while True:
+        theme = app.theme
+        wanted = app.run()
+        if app.theme != theme:
+            save_theme(folder, app.theme)
+            choice['theme'] = app.theme
+        if not isinstance(wanted, str):
+            break
+        found = switch(wanted, verbose)
+        if isinstance(found, tuple):
+            (folder, choice, app), signed = found, None  # the first place's sign-in is not this one's
+        else:
+            app = open_place(folder, choice, verbose, signed, interactive=False)
+            app.notice = f'Could not open {wanted}: {found}'
 
 
 def main(argv=None):
@@ -362,12 +450,15 @@ def main(argv=None):
     choice = saved_choice(read_directories(), folder)
     try:
         if args.setup or not choice:
+            theme = choice.get('theme') if choice else None
             if not sys.stdin.isatty():
                 sys.exit(f'issueboard: {"setup needs" if choice else f"{folder} has no board yet; choosing one needs"} '
                          'an interactive terminal. Run issueboard there, or use issueboard youtrack, issueboard gitlab or '
                          'issueboard jira directly (issueboard gitlab takes a board URL).')
             backend, found = choose_backend(folder, os.curdir, choice and choice['backend'])
             choice, signed = {'youtrack': setup_youtrack, 'jira': setup_jira}.get(backend, lambda: setup_gitlab(found))()
+            if isinstance(theme, str):
+                choice['theme'] = theme
             try:
                 write_json(config_path(), {'directories': {**read_directories(), folder: choice}})
                 print(f'{folder} opens {describe(choice)} from now on; issueboard --setup changes it.')
@@ -375,9 +466,8 @@ def main(argv=None):
                 print(f'Could not save {config_path()} ({exc}); the next start asks again.', file=sys.stderr)
         else:
             signed = None
-        {'youtrack': open_youtrack, 'jira': open_jira}.get(choice['backend'], open_gitlab)(choice, args.verbose, signed)
-    except (Cancelled, credentials.SetupError, YouTrackError, GlabError, target.TargetError, jira_credentials.SetupError,
-            JiraError, OSError) as exc:
+        run_places(folder, choice, args.verbose, signed)
+    except ERRORS as exc:
         sys.exit(f'issueboard: {exc}')
 
 

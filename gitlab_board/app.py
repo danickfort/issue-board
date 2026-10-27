@@ -226,6 +226,7 @@ class GitLabApp(BoardView):
             self.notify(self.note, title='No GitLab project in this checkout', severity='warning', timeout=10)
 
     def compose(self):
+        yield from self.identity()
         with Horizontal(id='toolbar'):
             yield Button('Place ▾', id='project', compact=True, action='app.pick_project', tooltip='Project or group (p)')
             yield Button('Board ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')

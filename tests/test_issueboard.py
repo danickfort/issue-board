@@ -177,14 +177,16 @@ def test_cancelling_or_failing_setup_keeps_the_saved_choice(tmp_path, monkeypatc
 def test_setup_replaces_only_this_folders_choice(tmp_path, monkeypatch, run):
     monkeypatch.chdir(tmp_path)
     folder = str(tmp_path.resolve())
-    other = {'backend': 'gitlab', 'board': f'https://{HOST}/demo/api/-/boards/1'}
+    other = {'backend': 'gitlab', 'board': f'https://{HOST}/demo/api/-/boards/1', 'theme': 'nord'}
     write_json(issueboard.config_path(), {'directories': {'/elsewhere': other, folder: other}})
     signed_in(monkeypatch, HOST)
     asked = terminal(monkeypatch, '', f'https://{HOST}/demo/portal/-/boards/1?label_name[]=Bug')
     main(['--setup'])
     assert 'Enter for 2' in asked[0]  # the current choice is preselected
-    assert saved() == {'/elsewhere': other, folder: {'backend': 'gitlab', 'board': f'https://{HOST}/demo/portal/-/boards/1?label_name[]=Bug'}}
+    assert saved() == {'/elsewhere': other, folder: {'backend': 'gitlab', 'board': f'https://{HOST}/demo/portal/-/boards/1?label_name[]=Bug',
+                                                   'theme': 'nord'}}
     assert run[0].start.params == {'label_name': ['Bug']}
+    assert run[0].theme == 'nord'
 
 
 def test_without_a_terminal_nothing_is_asked_and_the_way_out_is_named(tmp_path, monkeypatch, run):

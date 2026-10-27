@@ -6,7 +6,8 @@ from gitlab_board.merge_requests import approvals, details, discussion_status, s
 from test_gitlab import FakeGlab, demo_app, settle
 from test_merge_requests import mr, pick
 from youtrack_board.app import BoardApp
-from youtrack_board.demo import DemoClient, demo_gitlab, demo_state
+from youtrack_board.demo import DemoClient, demo_state
+from issueboard.story_merge_requests import demo_gitlab
 from issueboard.prefs import Prefs
 
 

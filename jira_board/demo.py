@@ -112,9 +112,10 @@ def comment(author, hours, edited, role, text):
 
 
 def demo_state():
-    """A returning user's visits, so the board opened last opens again."""
+    """A returning user's visits, so the board opened last opens again. WEB's GitLab repository is chosen already,
+    in the GitLab board demo's offline GitLab; DES's is not, so g on a DES issue asks for one."""
     now = time.time()
-    return {'visited': {'1': now - 300, '2': now - 86400}}
+    return {'visited': {'1': now - 300, '2': now - 86400}, 'repos': {'WEB': 'https://gitlab.example.com/demo/api'}}
 
 
 class DemoClient:

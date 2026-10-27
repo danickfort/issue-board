@@ -5,6 +5,8 @@ in their tracker-native shape; this module only uses their stable `id` for selec
 """
 import asyncio
 import logging
+import os
+from urllib.parse import urlsplit
 
 from rich.text import Text
 from textual import events, on, work
@@ -14,7 +16,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Input, Static
 
 from .diagnostics import LOGGER, LogBuffer, LogPanel
-from .widgets import Card, Column, InlineComments
+from .widgets import Card, Column, InlineComments, Picker, plain
 
 
 class BoardView(InlineComments, App):
@@ -30,6 +32,11 @@ class BoardView(InlineComments, App):
 
     CSS = '''
     Screen { background: $surface; }
+    #identity { height: 1; margin: 0 1; }
+    #identity Button { width: auto; min-width: 0; max-width: 24; margin-right: 1; padding: 0; text-style: bold;
+                       content-align: left middle; }
+    #identity Button:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
+    #who { width: 1fr; color: $text-muted; text-wrap: nowrap; text-overflow: ellipsis; }
     #toolbar { height: 1; margin: 0 1; }
     #toolbar > * { width: 1fr; margin-right: 1; }
     #toolbar Button { width: auto; min-width: 0; max-width: 24; padding: 0; text-style: none;
@@ -93,7 +100,7 @@ class BoardView(InlineComments, App):
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
                 Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
                 Binding('G', 'merge_requests(True)', 'All merge requests', show=False),
-                Binding('f12', 'logs', 'Logs', priority=True),
+                Binding('P', 'places', 'Switch place', show=False), Binding('f12', 'logs', 'Logs', priority=True),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
@@ -113,7 +120,56 @@ class BoardView(InlineComments, App):
         self.source = False
         self.rendering = asyncio.Lock()
         self.slowdown, self.skip = 1, 0
+        # Set by issueboard before it runs the board: the saved folder on screen, a function giving the Picker choices
+        # of every saved folder (P), and a notice to show once, such as why switching failed. None when run alone.
+        self.folder = self.places = self.notice = None
+        self.drop_drafts = False  # P was pressed once while Jira keeps an unsent comment
 
+    def identity(self):
+        """The connection strip, composed above the toolbar: the place (P) when launched by issueboard, then which
+        tracker, account and server this board talks to."""
+        with Horizontal(id='identity'):
+            if self.places is not None:
+                yield Button(f'⌂ {os.path.basename(self.folder)} ▾', id='places', compact=True, action='app.places',
+                             tooltip=f'{self.folder} · switch place (P)')
+            yield Static('', id='who')
+
+    def board_kind(self):
+        return ''  # Jira names Scrum or Kanban
+
+    def show_identity(self, failed=False):
+        """Tracker, account and server, as the server answered: never guessed from where the token came from."""
+        me = self.me or {}
+        name = plain(me.get('fullName') or me.get('name') or me.get('displayName'))
+        login = plain(me.get('login') or (me.get('username') and '@' + me['username']) or me.get('emailAddress'))
+        account = f'{name} ({login})' if name and login and name != login else name or login or \
+            ('account unknown' if failed else 'signing in…')
+        tracker = ' '.join(filter(None, [self.SERVICE, self.board_kind()]))
+        self.query_one('#who', Static).update(Text.assemble((tracker, 'bold'), f' · {account} · ',
+                                                            urlsplit(self.client.base_url).netloc))
+
+    def check_action(self, action, parameters):
+        return self.places is not None if action == 'places' else super().check_action(action, parameters)
+
+    def action_places(self):
+        """P: another saved folder's board, tracker and account. Never while a change is saving, a dialog is open or
+        Jira keeps a comment that failed to send: the board exits for issueboard to open the other place."""
+        if self.busy or self.screen.is_modal:
+            self.notify('Finish or cancel what is open first, then press P to switch place.', severity='warning')
+            return
+        drafts = getattr(self, 'drafts', None)
+        if drafts and not self.drop_drafts:
+            self.drop_drafts = True
+            self.notify(f'A comment on {", ".join(drafts)} was not sent and is kept only here: press c to send it, or '
+                        'P again to switch and drop it.', severity='warning', timeout=10)
+            return
+        try:
+            choices = self.places(self.folder)
+        except SystemExit as exc:  # the folder list is unreadable: say why, keep this board
+            self.notify(str(exc), severity='error', timeout=10)
+            return
+        self.push_screen(Picker('Places · saved issueboard folders', choices, self.folder),
+                         lambda folder: folder and folder != self.folder and self.exit(folder))
     def refresh_context(self):
         """Identify the board whose read result is still safe to display."""
         return self.board_data
@@ -139,6 +195,10 @@ class BoardView(InlineComments, App):
             LOGGER.info('%s started · verbose diagnostics enabled · F12 toggles logs', self.TITLE)
             self.set_interval(0.2, self.drain_logs)
         self.query_one('#details-pane').border_title = self.DETAILS
+        self.show_identity()
+        if self.notice:
+            self.notify(self.notice, title='Place not switched', severity='error', timeout=15)
+            self.notice = None
         self.watch(self.query_one('#board'), 'scroll_x', self.follow_board, init=False)
         if self.connection:
             self.notify(self.connection, title=f'{self.SERVICE} account', timeout=8)
@@ -150,6 +210,7 @@ class BoardView(InlineComments, App):
 
     def status(self, text, error=False):
         LOGGER.log(logging.ERROR if error else logging.DEBUG, '%s', text)
+        self.show_identity(failed=error)  # every load step reports here, including the account and the board type
         status = self.query_one('#status', Static)
         status.update(text)
         status.set_class(error, 'error')
@@ -519,4 +580,6 @@ class BoardView(InlineComments, App):
             LOGGER.removeHandler(self.log_buffer)
             self.log_buffer.close()
         await self.client.close()
+        for gitlab in getattr(self, 'gitlabs', {}).values():  # the merge requests' GitLab clients
+            await gitlab.close()
 

@@ -438,8 +438,7 @@ async def test_a_scrum_board_opens_its_active_sprint_with_columns_of_several_sta
         assert {c.issue['key'] for c in app.query(Card)} == {'WEB-1', 'WEB-3', 'WEB-7'}
         await pilot.press('x', 'slash', 'b', 'l', 'o', 'c', 'k')
         assert [c.issue['key'] for c in app.query(Card)] == ['WEB-4']  # its status, not only its text
-        assert not app.check_action('merge_requests', ())
-        assert 'merge' not in app.DETAILS
+        assert app.check_action('merge_requests', ()) and 'g merge requests' in app.DETAILS
 
 
 async def test_without_an_active_sprint_nothing_is_shown_as_current_until_one_is_chosen():

@@ -86,6 +86,12 @@ The first time `issueboard` starts in a folder, it asks whether the folder's iss
 - **GitLab** offers the checkout's GitLab remotes, or a project, group or board URL you type, then checks that glab is signed in to that host. If it is not, it offers to run `glab auth login --hostname <host>`, which keeps the token in glab. Then it asks for the board.
 - **Nothing is saved** until setup succeeds. Ctrl+C, Ctrl+D, a declined sign-in or a failed check leaves the folder's previous choice, if any, as it was.
 
+**Switch place.** On a board opened by `issueboard`, `P` (or the `⌂ folder ▾` button at the top left) lists the other folders you have set up, with their tracker, board and server, and opens the one you pick: YouTrack, GitLab and Jira alike, without restarting. The current board closes first, and its folder's remotes, credentials and saved state stay its own; the other folder's board signs in as it would at a start in that folder, except that it never asks or offers a sign-in. If that fails (credentials for another server, glab signed out, a folder that is gone), the previous board opens again and says why. `P` waits while a change is saving or a dialog is open, and asks once more before leaving a Jira comment that failed to send. Each folder keeps its own board. `p` still chooses a project within the board.
+
+**Themes per place.** Open the command palette with `Ctrl+P` and choose “Theme”. Each saved folder keeps its own theme when you quit or switch places, and restores it on your next visit, including after restarting `issueboard`. Changing a place's tracker with `--setup` keeps its theme. Unknown saved themes use the default. Demos and tracker subcommands do not save a place's theme.
+
+**Who is connected.** The line at the top of every board names the tracker (with Scrum or Kanban on Jira), the account the server says you are signed in as, and the server. It reads "signing in…" until the server answers, and "account unknown" if it does not.
+
 Later starts in that folder open the saved board directly. `issueboard --setup` asks again, with the current tracker preselected. Choices are kept in `$XDG_CONFIG_HOME/issueboard/directories.json` (or `~/.config/issueboard/directories.json`), keyed by folder path. Nothing is written to the project. They hold board IDs and URLs, never tokens. If that file is damaged, `issueboard` stops and names it rather than overwriting it. Without an interactive terminal, `issueboard` never prompts: in a folder without a choice, or with `--setup`, it exits and names the `issueboard youtrack`, `issueboard gitlab` and `issueboard jira` subcommands as alternatives. A Jira folder only ever opens with credentials for its own site.
 
 ## Try the demo
@@ -165,11 +171,12 @@ issueboard youtrack
 | m | Move: the current value is marked, the next one is preselected, Enter saves. Workflow-driven fields list YouTrack's transitions instead |
 | c | Write a single-line comment, then Enter to save |
 | C (Shift+c) | Read the selected card's comments, newest first. ↑/↓, PgUp/PgDn, Home/End scroll; `r` reloads; `c` writes one; Escape or `C` returns to the card |
-| g | The open GitLab [merge requests](#gitlab-merge-requests) that name the selected story |
+| g | The open GitLab [merge requests](#gitlab-merge-requests) that name the selected story (also on Jira boards) |
 | G (Shift+g) | Every open merge request of the GitLab repository of the selected story's project, most recently updated first; `i` opens the story one names |
 | b | Switch board, most recently opened first. The previous board is preselected, so `b` Enter flips between two boards |
 | B (Shift+b) | Open this board's [backlog](#backlog) full screen; Escape or `B` returns to the board as you left it |
 | p | Choose a project, or **All projects** |
+| P (Shift+p) | [Switch place](#one-board-per-project-folder): another folder's board, tracker and account (when started with `issueboard`) |
 | v | Personal view of this board: only my issues, compact cards, visible columns |
 | M (Shift+m) | Toggle "only issues assigned to me" |
 | x | Clear the project scope, only-mine filter and text filter |
@@ -218,7 +225,7 @@ Each comment shows its author, local time, whether it was edited, and a formatte
 
 ## GitLab merge requests
 
-`g` lists the open GitLab merge requests (MRs) that name the selected story, with their status. It only reads: nothing is merged, approved, rebased or rerun.
+`g` lists the open GitLab merge requests (MRs) that name the selected story, with their status. It only reads: nothing is merged, approved, rebased or rerun. Jira boards work the same way, with Jira issue keys and one repository per Jira project and site ([Jira board](docs/jira-board.md#gitlab-merge-requests)).
 
 MR lookup requires the GitLab CLI: `brew install glab`, then `glab auth login --hostname <your-gitlab-host>`.
 

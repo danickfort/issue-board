@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 import re
 import sys
 import webbrowser
@@ -16,6 +17,7 @@ from textual.widgets import Button, Footer, Input, Label, Select, Static
 from issueboard.board import BoardView
 from issueboard.diagnostics import LogPanel
 from issueboard.prefs import Prefs, default_path
+from issueboard.story_merge_requests import StoryMergeRequests, demo_gitlab
 from issueboard.widgets import (ALL, HINT, BacklogScreen as BaseBacklogScreen, Card as BaseCard, CommentDialog,
                                 CommentsScreen as BaseCommentsScreen, Picker, Row as BaseRow, ViewDialog, ago, plain)
 from . import credentials
@@ -164,32 +166,29 @@ class BacklogScreen(BaseBacklogScreen):
         return issue_details(issue, self.app.descriptions.get(issue['key'], NOT_LOADED), self.app.source)
 
 
-class JiraApp(BoardView):
+class JiraApp(StoryMergeRequests, BoardView):
     TITLE = 'Jira Board'
     SERVICE = 'Jira'
     ERROR = JiraError
     CARD = Card
     REFRESH = 10  # Jira Cloud rate-limits by cost; a board's issues every 10 s stays well inside it
     CSS = BoardView.CSS + '#toolbar #auto { width: 8; }'  # fits "↻ 120s", the slowest pace after failures
-    DETAILS = 'Details  (Enter expands with description and comments · s source)'
+    DETAILS = 'Details  (Enter expands with description and comments · g merge requests · s source)'
 
-    def __init__(self, client, prefs=None, connection=None, verbose=False):
+    def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None, verbose=False):
         super().__init__(client, prefs or Prefs(None, client.base_url), connection, verbose)
+        self.gitlab, self.gitlabs, self.cwd = gitlab, {}, cwd
         if self.log_buffer is not None:
             self.log_buffer.secrets += tuple(getattr(client, 'secrets', ()))
         self.sprint_data, self.sprint_memory = None, {}
         self.boards_scope = None  # the project the loaded board list is of
         self.descriptions, self.drafts = {}, {}
 
-    def check_action(self, action, parameters):
-        if action == 'merge_requests':  # GitLab merge requests are linked to YouTrack and GitLab issues only
-            return False
-        return super().check_action(action, parameters)
-
     def refresh_context(self):
         return self.board_data, self.sprint_data
 
     def compose(self):
+        yield from self.identity()
         with Horizontal(id='toolbar'):
             yield Button('All projects ▾', id='project', compact=True, action='app.pick_project', tooltip='Project (p)')
             yield Button('Board ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
@@ -372,6 +371,24 @@ class JiraApp(BoardView):
 
     def same(self, issue, other):
         return issue['key'] == other['key']
+
+    def board_kind(self):
+        return ((self.board_data or {}).get('type') or '').capitalize()
+
+    # GitLab merge requests (g, G): a project key is both the project's id and its stories' prefix
+
+    def story_project(self, issue):
+        return {'id': issue['project'], 'shortName': issue['project']} if issue.get('project') else None
+
+    def context_project(self):
+        key = self.prefs.data['project'] or ((self.board_data or {}).get('location') or {}).get('projectKey')
+        return {'id': key, 'shortName': key} if key else None
+
+    def prefix(self, project_id):
+        return project_id
+
+    def link(self, key):
+        return {'key': key}
 
     def details(self, issue):
         return issue_details(issue, self.descriptions.get(issue['key'], NOT_LOADED), self.source)
@@ -641,7 +658,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.demo:
         client = DemoClient()
-        JiraApp(client, Prefs(None, client.base_url, demo_state()), verbose=args.verbose).run()
+        JiraApp(client, Prefs(None, client.base_url, demo_state()), gitlab=demo_gitlab, verbose=args.verbose).run()
         return
     try:
         if args.logout:
@@ -654,7 +671,7 @@ def main(argv=None):
         client = Client(account.url, account.email, account.token)
     except (credentials.SetupError, JiraError, OSError) as exc:
         sys.exit(f'issueboard jira: {exc}')
-    JiraApp(client, Prefs(default_path('jira-board'), client.base_url), connection, verbose=args.verbose).run()
+    JiraApp(client, Prefs(default_path('jira-board'), client.base_url), connection, cwd=os.curdir, verbose=args.verbose).run()
 
 
 if __name__ == '__main__':

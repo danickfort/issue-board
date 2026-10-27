@@ -49,11 +49,17 @@ Moving the cursor never sends a request. `Enter` expands the details and reads t
 - `a` lists the people Jira can assign the issue to, you first, then people on this board, then everyone else, and Unassigned. On very large sites the list holds the first 1,000.
 - `c` adds a plain-text comment. If saving fails, the text is kept: `c` brings it back.
 
-Each change is a single request and is never retried automatically; after a connection failure, refresh before trying again. The board is read again after a transition or assignment. GitLab merge requests (`g`) are not available for Jira boards.
+Each change is a single request and is never retried automatically; after a connection failure, refresh before trying again. The board is read again after a transition or assignment.
+
+## GitLab merge requests
+
+`g` lists the open GitLab merge requests whose title, source branch or description names the selected issue's key as a whole word (`WEB-1`, never `WEB-10`), read-only, as on the [YouTrack board](../README.md#gitlab-merge-requests). `G` lists every open MR of the repository, for the selected issue's project, else the project chosen with `p`, else the board's own project; a board spanning several projects asks you to choose one with `p`. `i` on an MR opens the Jira issue it names: on the board, its details expand; otherwise it opens in the browser. `u` changes the repository.
+
+The first `g` for a Jira project asks for its GitLab repository, or, when the board started inside a Git checkout with a GitLab remote, uses that remote. The repository is saved only once GitLab, through glab, shows it to you, per Jira site and project key. Requires glab, signed in to the GitLab host; the board itself never needs it. In `issueboard --demo jira`, WEB's repository is chosen already: `g` on WEB-2 lists one MR, and the demo's GitLab is offline.
 
 ## Saved state
 
-Per site, in `$XDG_STATE_HOME/jira-board/state.json` (or `~/.local/state/jira-board/state.json`): when you last opened each board, the project scope, and each board's view options. No tokens. `issueboard` saves the folder's site, board, board name and project scope in its folder list, never credentials.
+Per site, in `$XDG_STATE_HOME/jira-board/state.json` (or `~/.local/state/jira-board/state.json`): when you last opened each board, the project scope, each board's view options, and each project's GitLab repository (`repos`, keyed by project key). No tokens. `issueboard` saves the folder's site, board, board name and project scope in its folder list, never credentials.
 
 ## Out of scope
 

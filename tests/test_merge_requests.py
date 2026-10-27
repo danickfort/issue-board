@@ -19,7 +19,8 @@ from test_gitlab import FAKE, FakeGlab, demo_app, fake_glab, settle, text  # noq
 from issueboard.widgets import Column, CommentDialog, Picker
 from youtrack_board.app import BoardApp
 from youtrack_board.demo import DemoClient as YouTrackDemo
-from youtrack_board.demo import demo_gitlab, demo_state
+from youtrack_board.demo import demo_state
+from issueboard.story_merge_requests import demo_gitlab
 from issueboard.prefs import Prefs
 
 HOST = 'gitlab.example.com'

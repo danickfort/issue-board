@@ -18,7 +18,7 @@ from test_merge_requests import pick
 from issueboard.widgets import CommentDialog, Picker
 from youtrack_board.app import BoardApp
 from youtrack_board.demo import DemoClient as YouTrackDemo
-from youtrack_board.demo import demo_gitlab
+from issueboard.story_merge_requests import demo_gitlab
 from issueboard.prefs import Prefs as YouTrackPrefs
 
 HOST = 'gitlab.example.com'

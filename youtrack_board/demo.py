@@ -123,15 +123,6 @@ def demo_state():
             'repos': {PROJECTS['DEMO']['id']: 'https://gitlab.example.com/demo/portal'}}
 
 
-def demo_gitlab(host):
-    """The GitLab board demo's offline GitLab, for the merge requests panel. It never runs glab."""
-    from gitlab_board.demo import HOST, DemoClient
-    from gitlab_board.glab import GlabError
-    if host != HOST:
-        raise GlabError(f'The demo has only {HOST}, with demo/portal and demo/api.')
-    return DemoClient()
-
-
 class DemoClient:
     base_url = 'https://example.youtrack.cloud'
 

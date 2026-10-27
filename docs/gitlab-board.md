@@ -111,6 +111,7 @@ Each project and group can have a default board. It opens when you start in the 
 | `s`, `o` | Markdown source or formatted text; open the issue in the browser |
 | `B` | The focused list in full, 50 issues at a time (Open is GitLab's backlog list), read-only |
 | `b`, `p` | Another board here; another project or group, or a URL or path |
+| `P` | Another saved folder's board, on any tracker, when started with `issueboard` ([switch place](../README.md#one-board-per-project-folder)) |
 | `D` | Make this board the [default](#default-board) of its project or group |
 | `r`, `R` | Reload (on expanded details: their comments); auto-refresh every 5 s on or off for this board |
 | `?`, `q` | All keys; quit |
