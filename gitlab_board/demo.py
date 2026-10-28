@@ -18,6 +18,10 @@ PEOPLE = {u: {'username': u, 'name': n} for u, n in [('alex', 'Alex Morgan'), ('
 MEMBERS = {'demo/portal': {'alex': 30, 'jordan': 30, 'sam': 15, 'kim': 30, 'priya': 5},
            'demo/api': {'alex': 30, 'priya': 30, 'sam': 10}}
 EPICS = {1: 'Online permit requests', 2: 'Accessibility'}
+# A task's parent issue; other issues have their epic as parent. Links as (source, type, target), seen from the source.
+PARENTS = {'portal#2': 'portal#3'}
+LINKED = [('portal#3', 'blocks', 'portal#4'), ('portal#4', 'relates_to', 'portal#5')]
+REVERSE = {'blocks': 'is_blocked_by', 'relates_to': 'relates_to'}
 
 
 def label_list(n, title):
@@ -137,7 +141,8 @@ class DemoClient:
             self.issues.append({
                 'id': f'gid://gitlab/Issue/{n + 1}', 'iid': str(iid), 'title': title, 'reference': f'{path}#{iid}',
                 'webUrl': f'{self.base_url}/{path}/-/issues/{iid}', 'state': 'opened' if opened else 'closed',
-                'confidential': confidential, 'closedAt': None if opened else stamp(n), 'dueDate': None, 'type': 'ISSUE',
+                'confidential': confidential, 'closedAt': None if opened else stamp(n), 'dueDate': None,
+                'type': 'TASK' if f'{project}#{iid}' in PARENTS else 'ISSUE',
                 'assignees': [deepcopy(PEOPLE[u]) for u in people], 'labels': labels, 'milestone': milestone,
                 'author': deepcopy(PEOPLE['alex' if n % 2 else 'jordan']), 'weight': n % 5 or None, 'healthStatus': None,
                 'iteration': None, 'status': status, 'epic': {'id': f'gid://gitlab/Epic/{epic}', 'iid': str(epic),
@@ -343,6 +348,32 @@ class DemoClient:
                 'id': number(issue['id']), 'iid': issue['iid'], 'title': issue['title'], 'state': issue['state'],
                 'references': {'full': issue['reference']}, 'web_url': issue['webUrl']}, why))
         return list(found.values())
+
+    async def issue(self, reference):
+        found = next((i for i in self.issues if i['reference'] == reference), None)
+        if not found:
+            error = GlabError(f'GitLab did not return {reference}: it may be gone, or hidden from you.')
+            error.status = 404
+            raise error
+        return {**{k: v for k, v in deepcopy(found).items() if k != 'position'}, 'listId': None}
+
+    @staticmethod
+    def work_item(issue):
+        return {'iid': issue['iid'], 'title': issue['title'], 'reference': issue['reference'], 'webUrl': issue['webUrl'],
+                'state': 'OPEN' if issue['state'] == 'opened' else 'CLOSED',
+                'workItemType': {'name': issue['type'].capitalize()}}
+
+    async def relations(self, issue):
+        found = self.find(issue)
+        ref, by_ref = found['reference'].removeprefix('demo/'), {i['reference'].removeprefix('demo/'): i for i in self.issues}
+        epic = found['epic'] and found['epic']['iid']
+        parent = self.work_item(by_ref[PARENTS[ref]]) if ref in PARENTS else epic and {
+            'iid': epic, 'title': EPICS[int(epic)], 'reference': f'demo&{epic}', 'state': 'OPEN',
+            'webUrl': f'{self.base_url}/groups/demo/-/epics/{epic}', 'workItemType': {'name': 'Epic'}}
+        return {'parent': parent or None,
+                'linked': [{'linkType': kind if ref == source else REVERSE[kind],
+                            'workItem': self.work_item(by_ref[target if ref == source else source])}
+                           for source, kind, target in LINKED if ref in (source, target)]}
 
     async def comment(self, issue, text):
         check_comment(text)

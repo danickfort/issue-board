@@ -83,6 +83,16 @@ DESCRIPTIONS['101'] = '''Open the board's **backlog** with `B`: the saved search
 
 * Search narrows the issues already loaded
 * `n` loads the next page'''
+# Links as YouTrack stores them, (source, type, target): a subtask link goes from the parent. DEMO-68 is on no board
+# and in no backlog, so u on DEMO-3 reads it from the demo's YouTrack.
+LINK_TYPES = {'Subtask': {'name': 'Subtask', 'sourceToTarget': 'parent for', 'targetToSource': 'subtask of',
+                          'directed': True, 'aggregation': True},
+              'Depend': {'name': 'Depend', 'sourceToTarget': 'is required for', 'targetToSource': 'depends on',
+                         'directed': True, 'aggregation': False},
+              'Relates': {'name': 'Relates', 'sourceToTarget': 'relates to', 'targetToSource': '', 'directed': False,
+                          'aggregation': False}}
+LINKS = [('DEMO-68', 'Subtask', 'DEMO-3'), ('DEMO-3', 'Subtask', 'DEMO-4'), ('DEMO-1', 'Depend', 'DEMO-2'),
+         ('DEMO-5', 'Depend', 'DEMO-2'), ('WEB-2', 'Relates', 'WEB-3')]
 # Issue id -> (author, hours ago, edited, visible only to this group, text), oldest first as YouTrack stores them.
 COMMENTS = {
     '3': [('jordan', 50, False, None, 'Token auth works against the staging instance.\nNext step: let people pick a sprint.'),
@@ -146,6 +156,8 @@ class DemoClient:
                     for item in items]
             # Ranked by hand on the board: the first few on top, the rest neither by ID nor by name.
             self.backlogs[saved] = made[:3] + random.Random(4).sample(made[3:], len(made[3:]))
+        self.elsewhere = [issue(next(ids), 'DEMO', 'Terminal board for YouTrack', 'In Progress', 'alex',
+                                'On no board: u on Connect to YouTrack (DEMO-3) opens it from there, and Esc goes back.')]
         self.threads = {issue: [demo_comment(*c) for c in thread] for issue, thread in COMMENTS.items()}
 
     async def boards(self):
@@ -210,6 +222,32 @@ class DemoClient:
             return current
         target[0]['value'] = {'name': allowed[event['id']]}
         return allowed[event['id']]
+
+    def everything(self):
+        return [*self.data, *(i for items in self.backlogs.values() for i in items), *self.elsewhere]
+
+    async def issue(self, key):
+        found = next((i for i in self.everything() if i['idReadable'] == key), None)
+        if not found:
+            error = YouTrackError(f'YouTrack returned HTTP 404. No issue {key}.')
+            error.status = 404
+            raise error
+        return deepcopy(found)
+
+    async def links(self, issue):
+        """Grouped by type and direction, as YouTrack lists them."""
+        known, found = {i['idReadable']: i for i in self.everything()}, {}
+        for source, kind, target in LINKS:
+            if issue['idReadable'] in (source, target):
+                outward = issue['idReadable'] == source
+                other = known[target if outward else source]
+                direction = 'BOTH' if not LINK_TYPES[kind]['directed'] else 'OUTWARD' if outward else 'INWARD'
+                done = other['customFields'][0]['value']['name'] == 'Done'
+                found.setdefault((kind, direction), []).append(
+                    {'id': other['id'], 'idReadable': other['idReadable'], 'summary': other['summary'],
+                     'resolved': 1700000000000 if done else None})
+        return [{'direction': direction, 'linkType': deepcopy(LINK_TYPES[kind]), 'issues': issues}
+                for (kind, direction), issues in found.items()]
 
     async def comments(self, issue):
         return sorted(deepcopy(self.threads.get(issue['id'], [])), key=lambda c: c['created'], reverse=True)

@@ -51,6 +51,15 @@ Moving the cursor never sends a request. `Enter` expands the details and reads t
 
 Each change is a single request and is never retried automatically; after a connection failure, refresh before trying again. The board is read again after a transition or assignment.
 
+## Linked issues
+
+`Enter` also lists the issues linked to the selected one above its details, parents first, and `u` and `i` open them over the board, as on the [YouTrack board](../README.md#linked-issues). They are read with `GET /rest/api/3/issue/{key}?fields=parent,issuelinks`:
+
+- **Parent:** Jira's `parent` field, one per issue: a sub-task's issue, an issue's epic, or an epic's parent level in a plan's hierarchy. It reads as *parent epic*, *parent story* and so on.
+- **Issue links:** each as its link type words it from this issue's side, such as *blocks* or *is blocked by*, *relates to* or *duplicates*.
+
+Epics are not on sprint boards, so the parent usually opens from Jira rather than from the board, still read-only and in the terminal. In the demo, WEB-1, WEB-2 and WEB-3 are in epic WEB-70; WEB-3 blocks WEB-4.
+
 ## GitLab merge requests
 
 `g` lists the open GitLab merge requests whose title, source branch or description names the selected issue's key as a whole word (`WEB-1`, never `WEB-10`), read-only, as on the [YouTrack board](../README.md#gitlab-merge-requests). `G` lists every open MR of the repository, for the selected issue's project, else the project chosen with `p`, else the board's own project; a board spanning several projects asks you to choose one with `p`. `i` on an MR opens the Jira issue it names: on the board, its details expand; otherwise it opens in the browser. `u` changes the repository.

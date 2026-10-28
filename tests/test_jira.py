@@ -17,10 +17,10 @@ from textual.widgets import Input, Select
 
 from issueboard import app as issueboard
 from issueboard.prefs import Prefs, default_path, write_json
-from issueboard.widgets import Column, CommentDialog, More
+from issueboard.widgets import Column, CommentDialog, IssueScreen, More
 from jira_board import credentials
 from jira_board.app import BacklogScreen, Card, JiraApp, main
-from jira_board.client import Client, JiraError, adf_paragraphs, check_url, group_issues, required_fields
+from jira_board.client import CARD_FIELDS, Client, JiraError, adf_paragraphs, check_url, group_issues, required_fields
 from jira_board.credentials import LEGACY_SITE, SetupError, config_path
 from jira_board.demo import DemoClient, demo_state
 from jira_board.markup import adf_markdown, render
@@ -656,3 +656,52 @@ def test_cancelling_jira_setup_saves_nothing(tmp_path, monkeypatch, run):
     with pytest.raises(SystemExit, match='cancelled'):
         issueboard.main([])
     assert not run and not os.path.exists(issueboard.config_path())
+
+
+# Linked issues
+
+async def test_parent_and_issue_links_are_read_from_the_issue_and_worded_from_its_side():
+    requests = []
+    blocks = {'name': 'Blocks', 'inward': 'is blocked by', 'outward': 'blocks'}
+
+    def respond(request):
+        requests.append(request)
+        if request.url.params['fields'] == 'parent,issuelinks':
+            return httpx.Response(200, json={'key': 'WEB-4', 'fields': {
+                'parent': {'key': 'WEB-70', 'fields': {'summary': 'Board MVP', 'issuetype': {'name': 'Epic'},
+                                                       'status': {'statusCategory': {'key': 'indeterminate'}}}},
+                'issuelinks': [{'type': blocks, 'inwardIssue': {'key': 'WEB-3', 'fields': {
+                    'summary': 'Connect', 'status': {'statusCategory': {'key': 'done'}}}}},
+                               {'type': blocks, 'outwardIssue': {'key': 'WEB-8', 'fields': {'summary': 'Later'}}}]}})
+        return httpx.Response(200, json={'id': '10070', 'key': 'WEB-70', 'fields': {'summary': 'Board MVP',
+                                                                                    'issuetype': {'name': 'Epic'}}})
+
+    client = client_for(respond)
+    try:
+        app = JiraApp(client)
+        found = await app.read_links({'key': 'WEB-4'})
+        parent = await app.read_issue(found[0])
+    finally:
+        await client.close()
+    assert [r.url.path for r in requests] == ['/rest/api/3/issue/WEB-4', '/rest/api/3/issue/WEB-70']
+    assert requests[1].url.params['fields'] == CARD_FIELDS
+    assert [(link['why'], link['ref'], link['parent'], link['done']) for link in found] == [
+        ('parent epic', 'WEB-70', True, False), ('is blocked by', 'WEB-3', False, True), ('blocks', 'WEB-8', False, False)]
+    assert parent['key'] == 'WEB-70' and parent['type'] == 'Epic'
+
+
+async def test_u_opens_the_epic_no_board_shows_and_escape_returns_to_the_story():
+    app = board_app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('slash', *'api token', 'enter', 'enter')  # WEB-3: in epic WEB-70, blocks WEB-4
+        await settle(app, pilot)
+        expanded = shown(app.query_one('#details').content, 200)
+        assert '↑ parent epic WEB-70 Board MVP' in expanded and 'blocks WEB-4' in expanded
+        assert 'relates to WEB-9 Sign-in page · done' in expanded
+        await pilot.press('u')
+        await settle(app, pilot)
+        assert isinstance(app.screen, IssueScreen) and app.screen.issue['key'] == 'WEB-70'
+        assert 'Type: Epic' in shown(app.screen.query_one('#details').content, 200)
+        await pilot.press('escape')
+        assert not app.screen.is_modal and app.selected['key'] == 'WEB-3'

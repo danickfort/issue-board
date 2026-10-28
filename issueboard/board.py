@@ -16,7 +16,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Input, Static
 
 from .diagnostics import LOGGER, LogBuffer, LogPanel
-from .widgets import Card, Column, InlineComments, Picker, plain
+from .widgets import Card, Column, InlineComments, IssueScreen, Picker, plain
 
 
 class BoardView(InlineComments, App):
@@ -26,7 +26,7 @@ class BoardView(InlineComments, App):
 
     ESCAPE_TO_MINIMIZE = False
 
-    DETAILS = 'Details  (Enter expands with comments · g merge requests · s source)'  # the details pane's title
+    DETAILS = 'Details  (Enter expands with comments · u parent · i linked · g merge requests · s source)'  # the details pane's title
 
     ALLOW_IN_MAXIMIZED_VIEW = 'Footer, LogPanel'
 
@@ -78,7 +78,8 @@ class BoardView(InlineComments, App):
     #thread { height: 1fr; scrollbar-size-vertical: 1; }
     #thread > .comment { margin-bottom: 1; padding: 0 1; background: $panel; border-left: tall $accent 50%; }
     #thread > .note { color: $text-muted; }
-    BacklogScreen { align: left top; background: $surface; }
+    BacklogScreen, IssueScreen { align: left top; background: $surface; }
+    IssueScreen #details-pane { height: 1fr; max-height: 100%; }
     #backlog-title { height: 1; padding: 0 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #backlog-search { margin: 0 1; }
     #backlog { height: 1fr; margin: 0 1; border: round $foreground 25%; scrollbar-size-vertical: 1; }
@@ -100,6 +101,7 @@ class BoardView(InlineComments, App):
                 Binding('o', 'open', 'Browser', show=False), Binding('r', 'refresh', 'Refresh', show=False),
                 Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
                 Binding('G', 'merge_requests(True)', 'All merge requests', show=False),
+                Binding('u', 'parent', 'Parent issue', show=False), Binding('i', 'linked', 'Linked issues', show=False),
                 Binding('P', 'places', 'Switch place', show=False), Binding('f12', 'logs', 'Logs', priority=True),
                 ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
@@ -548,6 +550,17 @@ class BoardView(InlineComments, App):
         self.action_focus_board()
         self.notify(f'{issue["ref"]} is not shown on this board; opening it in your browser.', markup=False)
         self.open_issue(issue, self.status)
+
+    def current(self):
+        return self.selected
+
+    def open_linked(self, link, back):
+        """A linked issue in a read-only view over the current one, Esc back to `back`; in the browser if the board
+        cannot show it (a GitLab epic, flagged 'web')."""
+        if link.get('web'):
+            self.open_issue(link, lambda text, error=True: self.notify(text, severity='error', markup=False))
+        else:
+            self.push_screen(IssueScreen(link, back))
 
     def comments_closed(self, choice):
         if not self.focused:  # the board was re-rendered meanwhile, so the card that had focus is gone

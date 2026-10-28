@@ -358,6 +358,25 @@ class GitLabApp(BoardView):
     def same(self, issue, other):
         return issue['id'] == other['id']
 
+    async def read_links(self, issue):
+        """The parent first (a task's issue, an issue's epic), then the linked items: relates to, blocks, is blocked by."""
+        found = await self.client.relations(issue)
+        links = [(found['parent'], None, True)] if found['parent'] else []
+        links += [(n['workItem'], (n.get('linkType') or 'linked to').replace('_', ' '), False) for n in found['linked']]
+        return [self.linked(*link) for link in links]
+
+    @staticmethod
+    def linked(item, why, parent):
+        """A linked work item. An epic is a group's, not an issue the board can read, so it opens in the browser (web)."""
+        kind = (item.get('workItemType') or {}).get('name') or ''
+        reference = item.get('reference') or ''
+        return {'iid': item.get('iid'), 'reference': reference, 'webUrl': item.get('webUrl') or '', 'ref': reference,
+                'title': item.get('title') or '', 'why': why or f'parent {kind.casefold()}'.strip(), 'parent': parent,
+                'done': item.get('state') == 'CLOSED', 'web': kind == 'Epic'}
+
+    async def read_issue(self, link):
+        return await self.client.issue(link['reference'])
+
     def action_merge_requests(self, everything=False):
         """g: the open MRs GitLab links to the selected issue; G: every open MR of the board's project or group."""
         links = self.client.merge_request_issues
@@ -746,7 +765,7 @@ class GitLabApp(BoardView):
         if parts.scheme != 'https' or (parts.netloc or '').lower() != self.client.host:
             status(f'Not opening {plain(url)}: it is not an https link on {self.client.host}.', error=True)
         elif webbrowser.open(url):
-            self.notify(url, title=f'Opening {self.ref(issue)}')
+            self.notify(url, title=f'Opening {issue.get("ref") or self.ref(issue)}')
         else:
             status(f'No browser available. Open {url}', error=True)
 

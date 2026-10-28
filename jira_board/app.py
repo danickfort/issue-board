@@ -173,7 +173,7 @@ class JiraApp(StoryMergeRequests, BoardView):
     CARD = Card
     REFRESH = 10  # Jira Cloud rate-limits by cost; a board's issues every 10 s stays well inside it
     CSS = BoardView.CSS + '#toolbar #auto { width: 8; }'  # fits "↻ 120s", the slowest pace after failures
-    DETAILS = 'Details  (Enter expands with description and comments · g merge requests · s source)'
+    DETAILS = 'Details  (Enter expands with description and comments · u parent · i linked · g merge requests · s source)'
 
     def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None, verbose=False):
         super().__init__(client, prefs or Prefs(None, client.base_url), connection, verbose)
@@ -389,6 +389,26 @@ class JiraApp(StoryMergeRequests, BoardView):
 
     def link(self, key):
         return {'key': key}
+
+    async def read_links(self, issue):
+        """The parent first, then the issue links, each worded from this issue's side: an inward issue with the link
+        type's inward words (is blocked by), an outward one with its outward words (blocks)."""
+        fields = await self.client.links(issue)
+        found = [(fields.get('parent'), None, True)]
+        for link in (link for link in fields.get('issuelinks') or [] if isinstance(link, dict)):
+            kind = link.get('type') or {}
+            found += [(link.get('inwardIssue'), kind.get('inward'), False), (link.get('outwardIssue'), kind.get('outward'), False)]
+        return [self.linked(other, why, parent) for other, why, parent in found if isinstance(other, dict) and other.get('key')]
+
+    def linked(self, other, why, parent):
+        fields = other.get('fields') or {}
+        kind = (fields.get('issuetype') or {}).get('name') or ''
+        return {**self.link(other['key']), 'ref': other['key'], 'title': fields.get('summary') or '',
+                'why': why or (f'parent {kind.casefold()}'.strip() if parent else 'linked to'), 'parent': parent,
+                'done': ((fields.get('status') or {}).get('statusCategory') or {}).get('key') == 'done'}
+
+    async def read_issue(self, link):
+        return await self.client.issue(link['key'])
 
     def details(self, issue):
         return issue_details(issue, self.descriptions.get(issue['key'], NOT_LOADED), self.source)

@@ -260,6 +260,19 @@ class Client:
     def issue_path(self, issue):
         return f'/rest/api/3/issue/{quote(issue["key"], safe="")}'
 
+    async def issue(self, key):
+        """One issue by key, as a card has it."""
+        found = await self.request('GET', self.issue_path({'key': key}), params={'fields': CARD_FIELDS})
+        if not isinstance(found, dict) or not found.get('key'):
+            raise JiraError('Jira answered with an unexpected issue; check the site URL.')
+        return compact(found)
+
+    async def links(self, issue):
+        """The issue's parent (a sub-task's issue, an issue's epic…) and its issue links: Jira's fields of those names."""
+        found = await self.request('GET', self.issue_path(issue), params={'fields': 'parent,issuelinks'})
+        fields = found.get('fields') if isinstance(found, dict) else None
+        return fields if isinstance(fields, dict) else {}
+
     async def description(self, issue):
         data = await self.request('GET', self.issue_path(issue), params={'fields': 'description'})
         return ((data or {}).get('fields') or {}).get('description')

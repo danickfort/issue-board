@@ -8,9 +8,9 @@ from rich.console import Console
 from rich.text import Text
 from textual.widgets import Input, OptionList, Select, Static
 
-from issueboard.widgets import Column, CommentDialog, More, Picker, ViewDialog
+from issueboard.widgets import Column, CommentDialog, IssueScreen, More, Picker, ViewDialog
 from youtrack_board.app import BacklogScreen, BoardApp, Card, CommentsScreen, Row, main, names
-from youtrack_board.client import ISSUE_FIELDS, Client, YouTrackError, group_issues
+from youtrack_board.client import ISSUE_FIELDS, LINK_FIELDS, Client, YouTrackError, group_issues
 from youtrack_board.demo import DemoClient
 from issueboard.prefs import Prefs
 
@@ -1513,3 +1513,114 @@ async def test_auto_refresh_indicator_fits_the_toolbar(monkeypatch):
         assert shown == ['↻ 5s', '↻ 60s', '↻ off']
         await pilot.click('#auto')  # the indicator is also a button
         assert str(auto.label) == '↻ 5s' and app.view()['auto']
+
+
+# Linked issues: u opens the parent, i any linked issue, each over the issue it was opened from
+
+async def test_u_opens_the_parent_over_the_issue_and_escape_goes_back_to_it():
+    app = BoardApp(DemoClient())
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        notes = []
+        app.notify = lambda message, **_: notes.append(message)
+        await pilot.press('slash', *'workflow err', 'enter', 'enter')  # DEMO-4, a subtask of DEMO-3, expanded
+        await settle(app, pilot)
+        assert app.selected['idReadable'] == 'DEMO-4' and '↑ subtask of DEMO-3 Connect to YouTrack' in details(app)
+        await pilot.press('u')
+        await settle(app, pilot)
+        parent = app.screen
+        assert isinstance(parent, IssueScreen) and parent.issue['idReadable'] == 'DEMO-3'
+        assert '  parent for DEMO-4 Handle workflow errors' in details(app) and 'Comments · 3, newest first' in details(app)
+        await pilot.press('m', 'a', 'c')  # board keys act on board cards only
+        assert app.screen is parent
+        await pilot.press('u')  # DEMO-68 is on no board: read from YouTrack
+        await settle(app, pilot)
+        assert app.screen.issue['idReadable'] == 'DEMO-68'
+        assert 'Esc back to DEMO-3' in str(app.screen.query_one('#details-pane').border_title)
+        await pilot.press('u')
+        await settle(app, pilot)
+        assert notes[-1] == 'DEMO-68 has no parent issue.' and app.screen.issue['idReadable'] == 'DEMO-68'
+        await pilot.press('escape')
+        assert app.screen is parent
+        await pilot.press('escape')
+        assert not app.screen.is_modal and app.selected['idReadable'] == 'DEMO-4'
+        assert app.screen.maximized is app.query_one('#details-pane')
+
+
+async def test_i_offers_every_linked_issue_even_before_the_details_expand():
+    app = BoardApp(DemoClient())
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('slash', *'onboarding', 'enter', 'i')  # DEMO-2 depends on DEMO-1, and on DEMO-5, done
+        await settle(app, pilot)
+        assert isinstance(app.screen, Picker) and picker_labels(app) == [
+            '  depends on DEMO-1 Keyboard navigation for the board', '  depends on DEMO-5 Choose a sprint · done']
+        await pilot.press('down', 'enter')
+        await settle(app, pilot)
+        assert isinstance(app.screen, IssueScreen) and app.screen.issue['idReadable'] == 'DEMO-5'
+        await pilot.press('escape')
+        assert not app.screen.is_modal and app.selected['idReadable'] == 'DEMO-2'
+
+
+async def test_failed_link_and_parent_reads_keep_the_rest_and_can_be_retried(monkeypatch):
+    client = DemoClient()
+    links, issue = client.links, client.issue
+
+    async def broken(*_):
+        raise YouTrackError('YouTrack returned HTTP 500.')
+    client.links = broken
+    opened = []
+    monkeypatch.setattr('webbrowser.open', lambda url: opened.append(url) or True)
+    app = BoardApp(client)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('slash', *'workflow err', 'enter', 'enter')
+        await settle(app, pilot)
+        shown = details(app)
+        assert 'Could not load the linked issues. YouTrack returned HTTP 500. Press r to retry.' in shown
+        assert 'Comments · none yet' in shown  # the comments still show
+        client.links, client.issue = links, broken
+        await pilot.press('r')
+        await settle(app, pilot)
+        assert '↑ subtask of DEMO-3' in details(app)
+        await pilot.press('u')
+        await settle(app, pilot)
+        assert 'Could not load DEMO-3. YouTrack returned HTTP 500. Press r to retry' in details(app)
+        await pilot.press('o')
+        assert opened == ['https://example.youtrack.cloud/issue/DEMO-3']
+        client.issue = issue
+        await pilot.press('r')
+        await settle(app, pilot)
+        assert app.screen.issue['idReadable'] == 'DEMO-3' and 'Connect to YouTrack' in details(app)
+
+
+async def test_links_are_read_as_youtrack_lists_them_and_worded_from_this_side():
+    requests = []
+    subtask = {'name': 'Subtask', 'aggregation': True, 'sourceToTarget': 'parent for', 'targetToSource': 'subtask of'}
+
+    def respond(request):  # the shapes YouTrack answers with
+        requests.append(request)
+        if request.url.params['fields'] == ISSUE_FIELDS:
+            return httpx.Response(200, json={'id': '2-124594', 'idReadable': 'ZBR-1510', 'customFields': []})
+        return httpx.Response(200, json={'links': [
+            {'direction': 'BOTH', 'linkType': {'name': 'Relates', 'aggregation': False, 'sourceToTarget': 'relates to',
+                                               'targetToSource': ''}, 'issues': [{'idReadable': 'FOMA-53', 'summary': 'Home'}]},
+            {'direction': 'INWARD', 'linkType': {'name': 'Depend', 'aggregation': False, 'sourceToTarget': 'is required for',
+                                                 'targetToSource': 'depends on'},
+             'issues': [{'idReadable': 'FOMA-46', 'summary': 'UI design', 'resolved': 1787554190510}]},
+            {'direction': 'OUTWARD', 'linkType': subtask, 'issues': [{'idReadable': 'ZBR-7000', 'summary': 'A subtask'}]},
+            {'direction': 'INWARD', 'linkType': subtask, 'issues': [{'idReadable': 'ZBR-1510', 'summary': 'PERS general'}]}]})
+
+    client = Client('https://example.test', 'secret', transport=httpx.MockTransport(respond))
+    try:
+        app = BoardApp(client)
+        found = await app.read_links({'id': '2-129532'})
+        parent = await app.read_issue(found[0])
+    finally:
+        await client.close()
+    assert [r.url.path for r in requests] == ['/api/issues/2-129532', '/api/issues/ZBR-1510']
+    assert requests[0].url.params['fields'] == LINK_FIELDS
+    assert [(link['why'], link['ref'], link['parent'], link['done']) for link in found] == [
+        ('subtask of', 'ZBR-1510', True, False), ('relates to', 'FOMA-53', False, False),
+        ('depends on', 'FOMA-46', False, True), ('parent for', 'ZBR-7000', False, False)]
+    assert parent['idReadable'] == 'ZBR-1510'

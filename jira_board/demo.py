@@ -42,6 +42,13 @@ ISSUES = [
     ('MOB', 'Offline tickets', '1', 'sam', 'Story', 'High', 3),
     ('MOB', 'Push opt-in', '1', None, 'Story', 'Medium', 3),
 ]
+# Jira keeps epics off sprints: WEB-70 is on no board and in no backlog. Links as (source, type, target): an issue
+# lists the target as its outward issue, and the target lists the source as its inward one.
+EPIC = ('WEB', 'Board MVP', '3', 'alex', 'Epic', 'High', None)
+PARENTS = {'WEB-1': 'WEB-70', 'WEB-2': 'WEB-70', 'WEB-3': 'WEB-70'}
+LINK_TYPES = {'Blocks': {'name': 'Blocks', 'inward': 'is blocked by', 'outward': 'blocks'},
+              'Relates': {'name': 'Relates', 'inward': 'relates to', 'outward': 'relates to'}}
+LINKS = [('WEB-3', 'Blocks', 'WEB-4'), ('WEB-3', 'Relates', 'WEB-9')]
 ACTIONS = ['Polish', 'Speed up', 'Document', 'Add tests for', 'Simplify', 'Localize']
 AREAS = ['the login form', 'search results', 'the sprint report', 'CSV export', 'email notifications',
          'the mobile menu', 'the settings page', 'image uploads', 'the onboarding tour', 'error messages']
@@ -141,6 +148,7 @@ class DemoClient:
             issue('WEB', summary, '1', [None, 'alex', 'sam'][n % 3], 'Task', 'Medium', 'backlog')
             if n < 4:
                 issue('MOB', summary, '1', None, 'Task', 'Low', 'backlog')
+        issue(*EPIC)
         self.threads = {key: [comment(*c) for c in thread] for key, thread in COMMENTS.items()}
 
     def find(self, issue):
@@ -181,6 +189,24 @@ class DemoClient:
                  and i['where'] == 'backlog']
         start = int(token or 0)
         return items[start:start + top], str(start + top) if start + top < len(items) else None
+
+    async def issue(self, key):
+        found = next((i for i in self.data if i['key'] == key), None)
+        if not found:
+            error = JiraError('Jira returned HTTP 404. Issue does not exist or you do not have permission to see it.')
+            error.status = 404
+            raise error
+        return compact(found)
+
+    async def links(self, issue):
+        def brief(key):
+            fields = self.find({'key': key})['fields']
+            return {'key': key, 'fields': {k: deepcopy(fields[k]) for k in ('summary', 'status', 'priority', 'issuetype')}}
+        parent = PARENTS.get(issue['key'])
+        return {'parent': brief(parent) if parent else None,
+                'issuelinks': [{'type': deepcopy(LINK_TYPES[kind]), **({'outwardIssue': brief(target)} if issue['key'] == source
+                                                                     else {'inwardIssue': brief(source)})}
+                               for source, kind, target in LINKS if issue['key'] in (source, target)]}
 
     async def description(self, issue):
         return deepcopy(self.find(issue)['description'])

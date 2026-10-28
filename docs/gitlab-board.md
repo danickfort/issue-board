@@ -41,7 +41,7 @@ For a self-managed GitLab, use its host name instead of `gitlab.com`.
 issueboard gitlab --demo
 ```
 
-No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, `Enter` on #3 (*Doing*) for its details with its comments, and `g` there for its merge requests. `G` lists every open merge request of the project; `i` on one opens the issue it links.
+No GitLab account, glab or network is needed. The demo never runs glab and never reads or writes saved state; changes disappear on exit. It has a project board with label lists (*Development*, where one issue sits in two lists), a scoped sprint board with status lists and a WIP limit (*Permits – Sprint 10*), and a group board with assignee and milestone lists (*Team planning*). Press `e` on *Development* for epic swimlanes, `B` on its Open list to page through 122 issues, `Enter` on #3 (*Doing*) for its details with its comments, and `g` there for its merge requests. `G` lists every open merge request of the project; `i` on one opens the issue it links. `u` on #2, a task, opens its parent issue #3, and `u` there opens epic &1 in the browser.
 
 To see how the app reads a board URL whose filters repeat, as the GitLab example does:
 
@@ -107,6 +107,7 @@ Each project and group can have a default board. It opens when you start in the 
 | `a` | Assign a project member, or unassign. Replaces all current assignees |
 | `c`, `C` | Write a one-line comment; read comments, newest first |
 | `g` | The issue's open [merge requests](#merge-requests) and their status, read-only |
+| `u`, `i` | The issue's [parent](#linked-issues); any linked issue. Each opens read-only over the current one; `Esc` goes back |
 | `G` | Every open merge request of the board's project or group, most recently updated first; `i` opens the issue one links |
 | `s`, `o` | Markdown source or formatted text; open the issue in the browser |
 | `B` | The focused list in full, 50 issues at a time (Open is GitLab's backlog list), read-only |
@@ -119,6 +120,13 @@ Each project and group can have a default board. It opens when you start in the 
 ## Comments in the details
 
 `Enter` expands the selected issue's details and reads its comments, newest first, under the description: author, time, edited, internal notes marked, and formatted Markdown (`s` shows the source). The details scroll with `↑` `↓`, `PgUp` `PgDn`, `Home` `End`. GitLab's system notes are left out, as with `C`. Comments are read only then, and on `r` while the details are expanded, never while the cursor moves between cards and never by auto-refresh. While they load, the details say so; an empty thread or an error says so too, and `r` retries. An answer for an issue that is no longer selected is dropped. A comment written with `c` shows at once. The same works in the full list (`B`). `C` still opens the comments on their own.
+
+## Linked issues
+
+`Enter` also lists the issues linked to the selected one above its details, parents first, and `u` and `i` open them over the board, as on the [YouTrack board](../README.md#linked-issues). They come from the issue's work item, as its GitLab page shows them (`workItem` with its hierarchy and linked-items widgets):
+
+- **Parent.** A task's parent is an issue. An issue's parent is an epic (GitLab Premium or Ultimate). An epic belongs to a group, not to a project, so `u` opens it in the browser.
+- **Linked items:** *relates to*, and on Premium or Ultimate *blocks* and *is blocked by*. The first 100 are listed.
 
 ## Merge requests
 

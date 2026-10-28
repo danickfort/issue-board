@@ -13,7 +13,7 @@ from gitlab_board.app import AskDialog, GitLabApp, ListScreen, NotesScreen, Pref
 from gitlab_board.client import Client, Enum, board_input, describe_move, literal, move_effects
 from gitlab_board.demo import BOARDS, DemoClient, demo_state
 from gitlab_board.glab import Glab, GlabError
-from issueboard.widgets import Column, Picker
+from issueboard.widgets import Column, IssueScreen, Picker
 
 SAMPLE = ('https://gitlab.com/geocity/geocity/-/boards/11511337'
           '?milestone_title=Sprint+9&label_name[]=PolCo&milestone_title=Sprint+10#/')
@@ -669,3 +669,49 @@ def test_command_line_guides_setup_and_refuses_bad_urls(monkeypatch, capsys):
 def test_demo_boards_cover_each_list_type():
     kinds = {lst['listType'] for *_, lists in BOARDS.values() for lst in lists}
     assert kinds == {'backlog', 'label', 'status', 'assignee', 'milestone', 'closed'}
+
+
+# Linked issues
+
+async def test_relations_read_the_work_item_hierarchy_and_linked_items():
+    documents = []
+
+    class Glab:  # answers as GitLab 19.5 does: widgets without the asked fields come as {}
+        host = 'gitlab.example.com'
+
+        async def graphql(self, document):
+            documents.append(document)
+            return {'workItem': {'widgets': [{}, {'parent': {
+                'iid': '84', 'title': 'Parent', 'reference': 'g/p#84', 'webUrl': 'https://gitlab.example.com/g/p/-/issues/84',
+                'state': 'OPEN', 'workItemType': {'name': 'Issue'}}}, {'linkedItems': {'nodes': [
+                    {'linkType': 'is_blocked_by', 'workItem': {'iid': '90', 'title': 'First', 'reference': 'g/p#90',
+                                                               'state': 'CLOSED', 'workItemType': {'name': 'Task'}}},
+                    {'linkType': 'relates_to', 'workItem': None}]}}]}}
+
+    found = await GitLabApp(Client('gitlab.example.com', Glab())).read_links({'id': 'gid://gitlab/Issue/98'})
+    assert 'workItem(id: "gid://gitlab/WorkItem/98")' in documents[0] and '... on WorkItemWidgetHierarchy' in documents[0]
+    assert 'linkedItems(first: 100)' in documents[0]
+    assert [(link['why'], link['ref'], link['parent'], link['done'], link['web']) for link in found] == [
+        ('parent issue', 'g/p#84', True, False, False), ('is blocked by', 'g/p#90', False, True, False)]
+
+
+async def test_u_climbs_from_a_task_to_its_issue_and_opens_an_epic_in_the_browser(monkeypatch):
+    opened = []
+    monkeypatch.setattr('webbrowser.open', lambda url: opened.append(url) or True)
+    app, _ = demo_app('https://gitlab.example.com/demo/portal/-/boards/1')
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('slash', *'onboarding guide', 'enter', 'enter')  # demo/portal#2, a task of #3
+        await settle(app, pilot)
+        assert '↑ parent issue demo/portal#3 Connect through glab' in text(app.query_one('#details', Static).content, 200)
+        await pilot.press('u')
+        await settle(app, pilot)
+        assert isinstance(app.screen, IssueScreen) and app.screen.issue['reference'] == 'demo/portal#3'
+        shown = text(app.screen.query_one('#details', Static).content, 200)
+        assert '↑ parent epic demo&1 Online permit requests' in shown and 'blocks demo/portal#4' in shown
+        await pilot.press('u')  # an epic is a group's: its GitLab page shows it
+        await settle(app, pilot)
+        assert opened == ['https://gitlab.example.com/groups/demo/-/epics/1']
+        assert app.screen.issue['reference'] == 'demo/portal#3'
+        await pilot.press('escape')
+        assert not app.screen.is_modal and app.selected['reference'] == 'demo/portal#2'

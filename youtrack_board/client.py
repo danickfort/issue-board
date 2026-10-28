@@ -13,6 +13,9 @@ ISSUE_FIELDS = "id,idReadable,summary,description,project(id,shortName),customFi
 BOARD_FIELDS = ("id,name,currentSprint(id),columnSettings(field(name),columns(presentation,ordinal,fieldValues(name))),"
                 "projects(id,shortName,name),sprintsSettings(disableSprints),orphansAtTheTop,hideOrphansSwimlane,"
                 "swimlaneSettings($type,enabled,field(id,name,presentation),values(name,presentation)),backlog(id,name,query)")
+# Each link as YouTrack lists it on the issue: its direction from this issue, its type, and the issues it links.
+LINK_FIELDS = ('links(direction,linkType(name,aggregation,sourceToTarget,targetToSource),'
+               'issues(id,idReadable,summary,resolved))')
 COMMENT_FIELDS = ("id,text,created,updated,deleted,author(login,fullName),"
                   "visibility($type,permittedGroups(name),permittedUsers(login,fullName))")
 
@@ -188,6 +191,19 @@ class Client:
         if not isinstance(page, list):
             raise YouTrackError('Expected a list from YouTrack; check the API URL.')
         return page[:top], len(page) > top
+
+    async def issue(self, key):
+        """One issue by its ID (such as DEMO-3), as a board lists it."""
+        found = await self.request('GET', f'issues/{quote(key, safe="")}', params={'fields': ISSUE_FIELDS})
+        if not isinstance(found, dict) or not isinstance(found.get('customFields'), list):
+            raise YouTrackError('Expected an issue from YouTrack; check the API URL.')
+        return found
+
+    async def links(self, issue):
+        """The issue's links: [{'direction', 'linkType', 'issues'}], the issues being those the account may see."""
+        found = await self.request('GET', f'issues/{quote(issue["id"], safe="")}', params={'fields': LINK_FIELDS})
+        links = found.get('links') if isinstance(found, dict) else None
+        return [link for link in links if isinstance(link, dict)] if isinstance(links, list) else []
 
     async def move(self, issue, field_name, value):
         field = movable_field(issue, field_name)

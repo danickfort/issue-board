@@ -615,6 +615,21 @@ class BoardApp(StoryMergeRequests, BoardView):
     def same(self, issue, other):
         return issue['idReadable'] == other['idReadable']
 
+    async def read_links(self, issue):
+        """The issues linked to this one, parents first. A link type that aggregates (Subtask, or a custom one like
+        it) goes from the parent, so a parent is linked inward; each link reads as its type words it from this side."""
+        found = []
+        for link in await self.client.links(issue):
+            kind, inward = link.get('linkType') or {}, link.get('direction') == 'INWARD'
+            why = (kind.get('targetToSource') if inward else kind.get('sourceToTarget')) or kind.get('name') or 'linked to'
+            found += [{**self.link(other['idReadable']), 'ref': other['idReadable'], 'title': other.get('summary') or '',
+                       'why': why, 'parent': inward and bool(kind.get('aggregation')), 'done': bool(other.get('resolved'))}
+                      for other in link.get('issues') or [] if isinstance(other, dict) and other.get('idReadable')]
+        return sorted(found, key=lambda link: not link['parent'])
+
+    async def read_issue(self, link):
+        return await self.client.issue(link['idReadable'])
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(

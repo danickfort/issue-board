@@ -134,16 +134,39 @@ class CommentDialog(ModalScreen):
             self.dismiss(event.value.strip())
 
 
+def link_label(link):
+    """A linked issue on one line: ↑ for a parent, how it is linked, its reference and title, and whether it is done."""
+    return Text.assemble('↑ ' if link['parent'] else '  ', (plain(link['why']), 'dim'), ' ', (plain(link['ref']), 'bold'),
+                         ' ', plain(link['title']), (' · done' if link['done'] else '', 'dim'), no_wrap=True,
+                         overflow='ellipsis')
+
+
+def links_view(thread):
+    """Above the details: the issues this one is linked to, parents first, or why they could not be read."""
+    if thread['links_error']:
+        return [Text(plain(f'Could not load the linked issues. {thread["links_error"]} Press r to retry.'), 'red'), Text('')]
+    if not thread['links']:
+        return []
+    keys = ' · u parent' if any(link['parent'] for link in thread['links']) else ''
+    return [Rule(Text.assemble(('Linked issues', 'bold'), (f'{keys} · i opens one', 'dim')), align='left', style='dim'),
+            *map(link_label, thread['links']), Text('')]
+
+
 class InlineComments:
-    """The selected issue's comments under its details, read when the details expand (Enter) and on r there, never
-    while the cursor moves. An answer only shows while its issue is selected; a newer read cancels an older one."""
-    thread = None  # {'id': issue id, 'comments': list or None, 'error': text or None, 'loading': bool}
+    """The selected issue's comments under its details and the issues it is linked to above them, read when the details
+    expand (Enter) and on r there, never while the cursor moves. An answer only shows while its issue is selected; a
+    newer read cancels an older one. u opens the issue's parent and i any issue linked to it, each in an IssueScreen.
+
+    Each tracker's read_links returns its links parents first, as {'ref', 'title', 'why' (how it is linked, as the
+    tracker words it), 'parent', 'done'}, plus what its read_issue and open_issue need to find that issue."""
+    thread = None  # {'id': issue id, 'comments' and 'links': list or None, 'error' and 'links_error': text or None,
+    #                 'loading': bool}
 
     def with_comments(self, issue, details):
         thread = self.thread if self.thread and self.thread['id'] == issue['id'] else None
         if not thread:
             return details
-        comments, parts = thread['comments'], [details, Text('')]
+        comments, parts = thread['comments'], [*links_view(thread), details, Text('')]
         count = f'{len(comments)}, newest first' if comments else 'none yet, or none you can see' if comments == [] else ''
         state = 'loading…' if thread['loading'] else count
         parts.append(Rule(Text.assemble(('Comments', 'bold'), (f' · {state}' if state else '', 'dim')), align='left',
@@ -157,16 +180,55 @@ class InlineComments:
     @work(exclusive=True, group='comments')
     async def load_comments(self, issue):
         old = self.thread if self.thread and self.thread['id'] == issue['id'] else {}
-        self.thread = {'id': issue['id'], 'comments': old.get('comments'), 'error': None, 'loading': True}
+        self.thread = {'id': issue['id'], 'comments': old.get('comments'), 'links': old.get('links'), 'error': None,
+                       'links_error': None, 'loading': True}
         self.show_details()
-        try:
-            comments = await self.app.read_comments(issue)
-        except self.app.ERROR as exc:
-            LOGGER.error('Could not load comments: %s', exc)
-            self.thread = {**self.thread, 'error': str(exc), 'loading': False}
+        found = await asyncio.gather(self.app.read_comments(issue), self.app.read_links(issue), return_exceptions=True)
+        thread = {**self.thread, 'loading': False}
+        for answer, key, error, name in zip(found, ('comments', 'links'), ('error', 'links_error'),
+                                            ('comments', 'linked issues')):
+            if isinstance(answer, self.app.ERROR):  # one failing still shows the other
+                LOGGER.error('Could not load %s: %s', name, answer)
+                thread[error] = str(answer)
+            elif isinstance(answer, BaseException):
+                raise answer
+            else:
+                thread[key] = answer
+        self.thread = thread
+        self.show_details()
+
+    def action_parent(self):
+        self.follow(True)
+
+    def action_linked(self):
+        self.follow(False)
+
+    @work(exclusive=True, group='links')
+    async def follow(self, parents):
+        """u: the issue's parent; i: any issue linked to it. One opens at once, several are offered first. Links read
+        with the comments are used, else they are read now."""
+        issue = self.current()
+        if not issue:
+            return
+        ref = self.app.ref(issue)
+        links = (self.thread if self.thread and self.thread['id'] == issue['id'] else {}).get('links')
+        if links is None:
+            try:
+                links = await self.app.read_links(issue)
+            except self.app.ERROR as exc:
+                self.notify(f'Could not read the issues {ref} is linked to. {exc}', severity='error', markup=False)
+                return
+        found = [link for link in links if link['parent'] or not parents]
+        if not found:
+            self.notify(f'{ref} has no parent issue.' if parents else f'{ref} is linked to no issue you can see.',
+                        markup=False)
+        elif len(found) == 1:
+            self.app.open_linked(found[0], ref)
         else:
-            self.thread = {**self.thread, 'comments': comments, 'loading': False}
-        self.show_details()
+            choices = [(n, link_label(link), f'{link["ref"]} {link["title"]}'.casefold(), False)
+                       for n, link in enumerate(found)]
+            self.app.push_screen(Picker(f'{"Parents of" if parents else "Issues linked to"} {ref} · Enter opens one',
+                                        choices), lambda n: n is not None and self.app.open_linked(found[n], ref))
 
 
 class ViewDialog(ModalScreen):
@@ -313,6 +375,7 @@ class BacklogScreen(InlineComments, ModalScreen):
     BINDINGS = [Binding('escape', 'back', 'Board'), Binding('B', 'dismiss', 'Board', show=False),
                 Binding('slash', 'search', 'Search'), Binding('n', 'more', 'More'), Binding('C', 'comments', 'Comments'),
                 Binding('o', 'open', 'Browser'), Binding('s', 'source', 'Markdown source', show=False),
+                Binding('u', 'parent', 'Parent issue', show=False), Binding('i', 'linked', 'Linked issues', show=False),
                 Binding('r', 'load', 'Reload', show=False), Binding('down', 'list', 'Back to the list', show=False),
                 ('question_mark', 'app.keys', 'Keys'), ('q', 'app.quit', 'Quit')]
 
@@ -333,7 +396,7 @@ class BacklogScreen(InlineComments, ModalScreen):
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · s source · Esc returns)'
+        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · u parent · i linked · s source · Esc returns)'
         self.query_one('#backlog').focus()
         self.load()
 
@@ -424,3 +487,70 @@ class BacklogScreen(InlineComments, ModalScreen):
         self.app.action_source()
         self.show_details()
 
+
+class IssueScreen(InlineComments, ModalScreen):
+    """A linked issue over the view it was opened from, read when it opens, with its comments and its own links: u and
+    i open its parent and linked issues over it, and Esc goes back. It only reads, as the backlog: board keys are inert."""
+
+    BINDINGS = [Binding('escape', 'dismiss', 'Back'), Binding('u', 'parent', 'Parent'), Binding('i', 'linked', 'Linked'),
+                Binding('C', 'comments', 'Comments'), Binding('o', 'open', 'Browser'),
+                Binding('s', 'source', 'Markdown source', show=False), Binding('r', 'load', 'Reload', show=False),
+                ('question_mark', 'app.keys', 'Keys'), ('q', 'app.quit', 'Quit')]
+
+    def __init__(self, link, back):
+        """link: the issue as read_links names it; back: the reference of the issue Esc returns to."""
+        super().__init__()
+        self.link, self.back, self.issue = link, back, None
+        self.note = Text(plain(f'Loading {link["ref"]} {link["title"]}…'), 'dim')  # until the issue is read
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id='details-pane'):
+            yield Static('', id='details')
+        yield Footer(show_command_palette=False)
+
+    def on_mount(self):
+        pane = self.query_one('#details-pane')
+        pane.border_title = Text(plain(f'{self.link["ref"]}  ·  Esc back to {self.back}  ·  u parent · i linked'))
+        pane.focus()
+        self.show_details()
+        self.load()
+
+    def current(self):
+        return self.issue
+
+    def show_details(self):
+        self.query_one('#details', Static).update(
+            self.with_comments(self.issue, self.app.details(self.issue)) if self.issue else self.note)
+
+    @work(exclusive=True, group='issue')
+    async def load(self):
+        try:
+            self.issue = await self.app.read_issue(self.link)
+        except self.app.ERROR as exc:
+            LOGGER.error('Could not load %s: %s', self.link['ref'], exc)
+            self.note = Text(plain(f'Could not load {self.link["ref"]}. {exc} Press r to retry, or o to open it in a '
+                                   'browser.'), 'red')
+            self.show_details()
+            return
+        self.load_comments(self.issue)
+
+    def action_load(self):
+        """r: the comments and links again once the issue is read, else the issue."""
+        if self.issue:
+            self.load_comments(self.issue)
+        else:
+            self.load()
+
+    def action_comments(self):
+        if self.issue:
+            self.app.push_screen(self.app.comments_screen(self.issue, writable=False), lambda _: self.show_details())
+
+    def action_open(self):
+        self.app.open_issue(self.issue or self.link, self.status)
+
+    def action_source(self):
+        self.app.action_source()
+        self.show_details()
+
+    def status(self, text, error=False):
+        self.notify(text, severity='error' if error else 'information', markup=False)

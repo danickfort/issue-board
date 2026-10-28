@@ -32,6 +32,8 @@ MR = ('iid title webUrl state draft sourceBranch targetBranch conflicts detailed
       'assignees(first: 20) { pageInfo { hasNextPage } nodes { username name } } '
       'project { fullPath } sourceProject { fullPath } headPipeline { status detailedStatus { label } }')
 MR_EE = MR + ' approvalsLeft approvalsRequired'
+# A linked work item: a task's parent issue, an issue's epic, or an item a link names.
+LINKED = 'iid title reference(full: true) webUrl state workItemType { name }'
 BOARD = 'id name webUrl hideBacklogList hideClosedList'
 BOARD_EE = BOARD + (' weight milestone { id title } iteration { id title } iterationCadence { id } assignee { username } '
                     'labels(first: 100) { nodes { title } }')
@@ -378,6 +380,35 @@ class Client:
             f'GitLab links more; the first {FIRST} closing and {FIRST} mentioning are shown'
         return {'mrs': issue_links([n['mergeRequest'] for n in closing.get('nodes') or [] if n.get('mergeRequest')],
                                    related.get('nodes') or []), 'more': more}
+
+    async def issue(self, reference):
+        """One issue (or task, incident…) by its full reference, group/project#12, as a board list has it."""
+        path, iid = reference.rsplit('#', 1)
+        data = await self.ask(lambda ee: f'query {{ project(fullPath: {literal(path)}) {{ issue(iid: {literal(iid)}) '
+                                         f'{{ {ISSUE_EE if ee else ISSUE} }} }} }}')
+        node = (data.get('project') or {}).get('issue')
+        if not node:
+            error = GlabError(f'GitLab did not return {reference}: it may be gone, or hidden from you.')
+            error.status = 404
+            raise error
+        return flat_issue(node)
+
+    async def relations(self, issue):
+        """The issue's parent and linked items, as its page shows them: {'parent': work item or None, 'linked':
+        [{'linkType', 'workItem'}]}. A task's parent is an issue, an issue's an epic (Premium); blocking links are
+        Premium too."""
+        work_item = literal(f'gid://gitlab/WorkItem/{int(number(issue["id"]))}')  # an issue is a work item, same id
+        # shortcut: the first FIRST linked items; page by cursor if an issue ever has more.
+        data = await self.glab.graphql(
+            f'query {{ workItem(id: {work_item}) {{ widgets {{ ... on WorkItemWidgetHierarchy {{ parent {{ {LINKED} }} }} '
+            f'... on WorkItemWidgetLinkedItems {{ linkedItems(first: {FIRST}) {{ nodes {{ linkType workItem {{ {LINKED} }} '
+            '} } } } } }')
+        if not data.get('workItem'):
+            raise GlabError(f'GitLab did not return {issue.get("reference")}: it may be gone, or hidden from you.')
+        widgets = [w for w in data['workItem'].get('widgets') or [] if w]
+        parent = next((w['parent'] for w in widgets if w.get('parent')), None)
+        linked = next((w['linkedItems'] for w in widgets if w.get('linkedItems')), None) or {}
+        return {'parent': parent, 'linked': [n for n in linked.get('nodes') or [] if n.get('workItem')]}
 
     async def project_merge_requests(self, path, key):
         """The project's open MRs that name a story ID in their title, source branch or description, as YouTrack's
