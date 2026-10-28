@@ -190,7 +190,7 @@ async def test_P_lists_saved_places_and_picks_another_or_nothing(tmp_path, size)
     app.folder, app.places = folders['web'], issueboard.place_choices
     async with app.run_test(size=size) as pilot:
         await settle(app, pilot)
-        assert str(app.query_one('#places', Button).label) == '⌂ web ▾'
+        assert str(app.query_one('#places', Button).label) == '⌂ Folder (Shift+P): web ▾'
         assert app.query_one('#who').region.width >= 20  # the account stays readable beside the place
         await pilot.press('P')
         picker = app.screen

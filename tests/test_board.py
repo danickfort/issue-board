@@ -144,7 +144,7 @@ async def test_refresh_keeps_selection_and_renders_never_duplicate_columns():
     app = BoardApp(DemoClient())
     async with app.run_test(size=(80, 24)) as pilot:
         await settle(app, pilot)
-        assert app.query_one('#board').size.height >= 12
+        assert app.query_one('#board').size.height >= 10
         await pilot.press('right', 'down', 'r')
         await settle(app, pilot)
         assert app.selected['idReadable'] == 'DEMO-4'
@@ -346,7 +346,7 @@ async def test_boards_resume_recent_first_and_project_scope_narrows_without_relo
 
         await pilot.press('p', *'ops', 'enter')  # not on this board: open its most recent board
         await settle(app, pilot)
-        assert app.board_id == 'ops' and str(app.query_one('#project').label) == 'OPS ▾'
+        assert app.board_id == 'ops' and str(app.query_one('#project').label) == '◇ Project scope (p)\nOPS ▾'
         await pilot.press('b', *'zzz')
         assert picker_values(app) == ['*']  # the way out stays visible
         await pilot.press('enter')

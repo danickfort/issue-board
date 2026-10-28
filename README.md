@@ -86,7 +86,7 @@ The first time `issueboard` starts in a folder, it asks whether the folder's iss
 - **GitLab** offers the checkout's GitLab remotes, or a project, group or board URL you type, then checks that glab is signed in to that host. If it is not, it offers to run `glab auth login --hostname <host>`, which keeps the token in glab. Then it asks for the board.
 - **Nothing is saved** until setup succeeds. Ctrl+C, Ctrl+D, a declined sign-in or a failed check leaves the folder's previous choice, if any, as it was.
 
-**Switch place.** On a board opened by `issueboard`, `P` (or the `⌂ folder ▾` button at the top left) lists the other folders you have set up, with their tracker, board and server, and opens the one you pick: YouTrack, GitLab and Jira alike, without restarting. The current board closes first, and its folder's remotes, credentials and saved state stay its own; the other folder's board signs in as it would at a start in that folder, except that it never asks or offers a sign-in. If that fails (credentials for another server, glab signed out, a folder that is gone), the previous board opens again and says why. `P` waits while a change is saving or a dialog is open, and asks once more before leaving a Jira comment that failed to send. Each folder keeps its own board. `p` still chooses a project within the board.
+**Switch place.** On a board opened by `issueboard`, `P` (or the `⌂ Folder (Shift+P): … ▾` button at the top left) lists the other folders you have set up, with their tracker, board and server, and opens the one you pick: YouTrack, GitLab and Jira alike, without restarting. The current board closes first, and its folder's remotes, credentials and saved state stay its own; the other folder's board signs in as it would at a start in that folder, except that it never asks or offers a sign-in. If that fails (credentials for another server, glab signed out, a folder that is gone), the previous board opens again and says why. `P` waits while a change is saving or a dialog is open, and asks once more before leaving a Jira comment that failed to send. Each folder keeps its own board. `p` still chooses a project within the board.
 
 **Themes per place.** Open the command palette with `Ctrl+P` and choose “Theme”. Each saved folder keeps its own theme when you quit or switch places, and restores it on your next visit, including after restarting `issueboard`. Changing a place's tracker with `--setup` keeps its theme. Unknown saved themes use the default. Demos and tracker subcommands do not save a place's theme.
 
@@ -162,6 +162,8 @@ issueboard youtrack
 
 ## Controls
 
+The toolbar labels **Folder**, **Project scope** (or GitLab **Project / group**) and **Board**, with their shortcuts. Issue details have clickable actions with icons, names and keys. **Go to parent** names the parent once links load, and disappears when there is none. **More actions** offers merge requests, browser, Markdown source and reload; linked issues and backlog details show only read-only actions. Existing shortcuts still work.
+
 | Key | Action |
 | --- | --- |
 | ← / → or h / l | Move between columns |
@@ -194,7 +196,7 @@ issueboard youtrack
 
 The assign, move, board and project dialogs work the same way: type to narrow the list (all words must match), ↑/↓ to choose, Enter to pick, Escape to cancel. The current value is shown but disabled. You can also click the project and board buttons in the toolbar.
 
-The top row shows the project scope, the board, the sprint and the filter. The current sprint is selected automatically; if you switch away from a board and come back in the same session, your sprint choice there is kept. Archived sprints remain selectable. Boards with sprints disabled load their board membership directly and hide the sprint selector; an underlying default sprint does not change that behavior. Empty boards stay visible. The filter searches loaded issue IDs, summaries, and assignee names or logins. The status line shows how many issues are visible and why others are hidden (project scope, "assigned to me", text filter, hidden columns).
+The toolbar shows the project scope, board and sprint above a full-width filter. The current sprint is selected automatically; if you switch away from a board and come back in the same session, your sprint choice there is kept. Archived sprints remain selectable. Boards with sprints disabled load their board membership directly and hide the sprint selector; an underlying default sprint does not change that behavior. Empty boards stay visible. The filter searches loaded issue IDs, summaries, and assignee names or logins. The status line shows how many issues are visible and why others are hidden (project scope, "assigned to me", text filter, hidden columns).
 
 The selected card stays selected after a move, refresh, or filter change, and follows a moved card to its new column. Errors appear in red in the status line. The layout fits terminals down to about 60×20; columns scroll sideways when they don't fit.
 

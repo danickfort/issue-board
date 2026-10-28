@@ -9,10 +9,10 @@ from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Grid, Vertical, VerticalScroll
 from textual.fuzzy import Matcher
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, Label, ListItem, ListView, OptionList, SelectionList, Static
+from textual.widgets import Button, Footer, Input, Label, ListItem, ListView, OptionList, SelectionList, Static
 from textual.widgets.option_list import Option
 
 from .diagnostics import LOGGER
@@ -142,7 +142,7 @@ def link_label(link):
 
 
 def links_view(thread):
-    """Above the details: the issues this one is linked to, parents first, or why they could not be read."""
+    """The issues this one is linked to, parents first, or why they could not be read."""
     if thread['links_error']:
         return [Text(plain(f'Could not load the linked issues. {thread["links_error"]} Press r to retry.'), 'red'), Text('')]
     if not thread['links']:
@@ -150,6 +150,65 @@ def links_view(thread):
     keys = ' · u parent' if any(link['parent'] for link in thread['links']) else ''
     return [Rule(Text.assemble(('Linked issues', 'bold'), (f'{keys} · i opens one', 'dim')), align='left', style='dim'),
             *map(link_label, thread['links']), Text('')]
+
+
+class IssueActions(Vertical):
+    """Clickable labels for the current view; existing actions remain responsible for permissions and saving."""
+    DEFAULT_CSS = """
+    IssueActions { height: auto; }
+    IssueActions > Button { width: 100%; height: 1; min-width: 0; padding: 0;
+                            content-align: left middle; text-align: left; text-style: none; }
+    IssueActions Grid { grid-size: 3; grid-rows: 1; grid-gutter: 0 1; height: auto; }
+    IssueActions Grid Button { width: 1fr; height: 1; min-width: 0; padding: 0; text-align: left; text-style: none; }
+    #issue-parent { color: $accent; }
+    """
+
+    def __init__(self, *, editable=False):
+        super().__init__()
+        self.editable = editable
+
+    def compose(self):
+        yield Button('↑ Go to parent (u)', id='issue-parent', compact=True)
+        with Grid():
+            if self.editable:
+                yield Button('↔ Move (m)', id='issue-move', compact=True)
+                yield Button('○ Assign (a)', id='issue-assign', compact=True)
+                yield Button('+ Comment (c)', id='issue-comment', compact=True)
+            yield Button('≡ Comments (C)', id='issue-comments', compact=True)
+            yield Button('↗ Linked (i)', id='issue-linked', compact=True)
+            yield Button('More actions ▾', id='issue-more', compact=True)
+
+    def sync(self, issue, thread):
+        self.display = issue is not None
+        if not issue:
+            return
+        links = thread.get('links') if thread and thread['id'] == issue['id'] else None
+        parents = [link for link in links or [] if link['parent']]
+        parent = self.query_one('#issue-parent', Button)
+        parent.display = links is None or bool(parents)
+        label = '↑ Go to parent'
+        if len(parents) == 1:
+            label += ' · ' + plain(parents[0]['ref'])
+        parent.label = Text(label + ' (u)')
+        parent.tooltip = 'Read linked issues to find the parent' if links is None else label
+
+    @on(Button.Pressed)
+    async def pressed(self, event):
+        event.stop()
+        action = event.button.id.removeprefix('issue-')
+        owner = self.app if self.editable else self.screen
+        if action == 'more':
+            options = [('open', '↗ Open in browser (o)'), ('source', 'Markdown source (s)'),
+                       ('refresh' if self.editable else 'load', 'Reload (r)')]
+            if self.editable:
+                options.insert(0, ('merge_requests', '⑂ Merge requests (g)'))
+            async def chosen(action):
+                if action:
+                    await owner.run_action(action)
+            self.app.push_screen(Picker('More issue actions',
+                                        [(a, label, label.casefold(), False) for a, label in options]), chosen)
+        else:
+            await owner.run_action(action)
 
 
 class InlineComments:
@@ -166,7 +225,7 @@ class InlineComments:
         thread = self.thread if self.thread and self.thread['id'] == issue['id'] else None
         if not thread:
             return details
-        comments, parts = thread['comments'], [*links_view(thread), details, Text('')]
+        comments, parts = thread['comments'], [details, Text(''), *links_view(thread)]
         count = f'{len(comments)}, newest first' if comments else 'none yet, or none you can see' if comments == [] else ''
         state = 'loading…' if thread['loading'] else count
         parts.append(Rule(Text.assemble(('Comments', 'bold'), (f' · {state}' if state else '', 'dim')), align='left',
@@ -392,11 +451,12 @@ class BacklogScreen(InlineComments, ModalScreen):
         yield Static('', id='status')
         yield Issues(id='backlog')
         with VerticalScroll(id='details-pane', can_maximize=True):
+            yield IssueActions()
             yield Static('', id='details')
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
-        self.query_one('#details-pane').border_title = 'Details  (Enter expands with comments · u parent · i linked · s source · Esc returns)'
+        self.query_one('#details-pane').border_title = 'Details · Enter expands · Esc returns'
         self.query_one('#backlog').focus()
         self.load()
 
@@ -447,6 +507,7 @@ class BacklogScreen(InlineComments, ModalScreen):
     @on(ListView.Highlighted, '#backlog')
     def show_details(self):
         item, details = self.query_one('#backlog', ListView).highlighted_child, self.query_one('#details', Static)
+        self.query_one(IssueActions).sync(self.current(), self.thread)
         if isinstance(item, Row):
             details.update(self.with_comments(item.issue, self.details(item.issue)))
         elif isinstance(item, More):
@@ -505,12 +566,13 @@ class IssueScreen(InlineComments, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id='details-pane'):
+            yield IssueActions()
             yield Static('', id='details')
         yield Footer(show_command_palette=False)
 
     def on_mount(self):
         pane = self.query_one('#details-pane')
-        pane.border_title = Text(plain(f'{self.link["ref"]}  ·  Esc back to {self.back}  ·  u parent · i linked'))
+        pane.border_title = Text(plain(f'{self.link["ref"]} · Read only · Esc back to {self.back}'))
         pane.focus()
         self.show_details()
         self.load()
@@ -519,6 +581,7 @@ class IssueScreen(InlineComments, ModalScreen):
         return self.issue
 
     def show_details(self):
+        self.query_one(IssueActions).sync(self.issue, self.thread)
         self.query_one('#details', Static).update(
             self.with_comments(self.issue, self.app.details(self.issue)) if self.issue else self.note)
 

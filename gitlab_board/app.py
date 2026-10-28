@@ -20,7 +20,7 @@ from textual.widgets import Button, Footer, Input, Label, Static
 from issueboard import prefs as base_prefs
 from issueboard.board import BoardView
 from issueboard.diagnostics import LogPanel
-from issueboard.widgets import (ALL, HINT, BacklogScreen, Card, Column, CommentDialog, CommentsScreen, Picker,
+from issueboard.widgets import (ALL, HINT, IssueActions, BacklogScreen, Card, Column, CommentDialog, CommentsScreen, Picker,
                                 Row, ViewDialog, ago, plain)
 
 from . import glab, remotes, target
@@ -206,10 +206,12 @@ class GitLabApp(BoardView):
     ERROR = GlabError
     CARD = GitLabCard
     CSS = BoardView.CSS + '''
+    #toolbar { grid-size: 3; grid-columns: 23 1fr 8; }
+    #toolbar #filter { column-span: 3; }
     #scope { height: 1; padding: 0 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #scope.warning { color: $text-warning; }
     '''
-    BINDINGS = [('p', 'pick_project', 'Place'), ('B', 'backlog', 'List'),
+    BINDINGS = [Binding('p', 'pick_project', 'Project / group', show=False), ('B', 'backlog', 'List'),
                 Binding('e', 'lanes', 'Epic swimlanes', show=False), Binding('D', 'make_default', 'Default board', show=False)]
 
     def __init__(self, client, prefs=None, via=None, start=None, remotes=(), note=None, verbose=False):
@@ -228,15 +230,16 @@ class GitLabApp(BoardView):
     def compose(self):
         yield from self.identity()
         with Horizontal(id='toolbar'):
-            yield Button('Place ▾', id='project', compact=True, action='app.pick_project', tooltip='Project or group (p)')
-            yield Button('Board ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
-            yield Input(placeholder='Filter by #, title, assignee or label  (/)', id='filter', compact=True)
+            yield Button('◇ Project / group (p)\nChoose… ▾', id='project', compact=True, action='app.pick_project', tooltip='Project or group (p)')
+            yield Button('▦ Board (b)\nChoose… ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
             yield Button('', id='auto', compact=True, action='app.auto', tooltip='Auto-refresh this board (R)')
+            yield Input(placeholder='Filter by #, title, assignee or label  (/)', id='filter', compact=True)
         yield Static('', id='scope', markup=False)  # the filters GitLab applies, from the board's scope and its URL
         yield Static('Loading boards…', id='status', markup=False)
         yield Horizontal(id='heads')
         yield ScrollableContainer(id='board', can_focus=False)
         with VerticalScroll(id='details-pane', can_maximize=True):
+            yield IssueActions(editable=True)
             yield Static('', id='details', markup=False)
         if self.log_buffer is not None:
             yield LogPanel()
@@ -414,7 +417,9 @@ class GitLabApp(BoardView):
         board = next((b for b in self.boards if self.board_key(b['number']) == self.board_id), None) if self.place else None
         labels = (('#project', self.place['path'] if self.place else 'Place'), ('#boards', board['name'] if board else 'Board'))
         for button, label in labels:
-            self.query_one(button, Button).label = Content(label + ' ▾')
+            heading = '◇ Project / group (p)' if button == '#project' else '▦ Board (b)'
+            self.query_one(button, Button).label = Content(heading + '\n' + label + ' ▾')
+            self.query_one(button, Button).tooltip = Text(heading + ': ' + plain(label))
             self.call_after_refresh(self.query_one(button).refresh, layout=True)
         scope = self.query_one('#scope', Static)
         filters, notes = (self.board_data or {}).get('filters') or {}, (self.board_data or {}).get('notes') or []

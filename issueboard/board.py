@@ -16,7 +16,7 @@ from textual.containers import Horizontal
 from textual.widgets import Button, Input, Static
 
 from .diagnostics import LOGGER, LogBuffer, LogPanel
-from .widgets import Card, Column, InlineComments, IssueScreen, Picker, plain
+from .widgets import Card, Column, InlineComments, IssueActions, IssueScreen, Picker, plain
 
 
 class BoardView(InlineComments, App):
@@ -26,23 +26,25 @@ class BoardView(InlineComments, App):
 
     ESCAPE_TO_MINIMIZE = False
 
-    DETAILS = 'Details  (Enter expands with comments · u parent · i linked · g merge requests · s source)'  # the details pane's title
+    DETAILS = 'Details · Enter expands'  # the details pane's title
 
     ALLOW_IN_MAXIMIZED_VIEW = 'Footer, LogPanel'
 
     CSS = '''
     Screen { background: $surface; }
     #identity { height: 1; margin: 0 1; }
-    #identity Button { width: auto; min-width: 0; max-width: 24; margin-right: 1; padding: 0; text-style: bold;
+    #identity Button { width: auto; min-width: 0; max-width: 36; margin-right: 1; padding: 0; text-style: bold;
                        content-align: left middle; }
     #identity Button:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
     #who { width: 1fr; color: $text-muted; text-wrap: nowrap; text-overflow: ellipsis; }
-    #toolbar { height: 1; margin: 0 1; }
-    #toolbar > * { width: 1fr; margin-right: 1; }
-    #toolbar Button { width: auto; min-width: 0; max-width: 24; padding: 0; text-style: none;
+    #toolbar { layout: grid; grid-size: 4; grid-columns: 21 1fr 1fr 8; grid-rows: 2 1;
+               grid-gutter: 0 1; height: 3; margin: 0 1; }
+    #toolbar > * { width: 1fr; }
+    #toolbar #filter { column-span: 4; }
+    #toolbar Button { width: 1fr; height: 2; min-width: 0; padding: 0; text-style: none;
                       content-align: left middle; }
     #toolbar Button:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
-    #toolbar #auto { width: 7; margin-right: 0; }  /* fits "↻ 60s" and the padding every Button has */
+    #toolbar #auto { width: 7; height: 1; margin-right: 0; }  /* fits "↻ 60s" and the padding every Button has */
     #toolbar #auto.error { color: $text-error; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     #status.error { color: $text-error; }
@@ -66,7 +68,7 @@ class BoardView(InlineComments, App):
     Column > Card.-highlight { background: $panel; color: $foreground; text-style: none; }
     Column:focus > Card.-highlight { background: $block-cursor-background; color: $block-cursor-foreground;
                                      text-style: $block-cursor-text-style; border-left: tall $accent; }
-    #details-pane { height: 30%; max-height: 12; border-top: solid $foreground 25%; padding: 0 1; }
+    #details-pane { height: 30%; min-height: 7; max-height: 12; border-top: solid $foreground 25%; padding: 0 1; }
     #details-pane:focus { border-top: solid $border; }
     #details-pane.-maximized { height: 1fr; max-height: 100%; }
     ModalScreen { align: center middle; background: $background 70%; }
@@ -92,9 +94,11 @@ class BoardView(InlineComments, App):
     .hint.error { color: $text-error; }
     '''
 
-    BINDINGS = [('a', 'assign', 'Assign'), ('m', 'move', 'Move'), ('c', 'comment', 'Comment'),
+    BINDINGS = [Binding('a', 'assign', 'Assign', show=False), Binding('m', 'move', 'Move', show=False),
+                Binding('c', 'comment', 'Comment', show=False),
                 Binding('C', 'comments', 'Read comments', show=False),
-                ('b', 'pick_board', 'Board'), ('B', 'backlog', 'Backlog'), ('p', 'pick_project', 'Project'), ('v', 'view', 'View'),
+                Binding('b', 'pick_board', 'Board', show=False), ('B', 'backlog', 'Backlog'),
+                Binding('p', 'pick_project', 'Project scope', show=False), ('v', 'view', 'View'),
                 Binding('M', 'mine', 'Only mine', show=False), ('slash', 'filter', 'Filter'),
                 Binding('x', 'clear_filters', 'Show all issues', show=False),
                 Binding('s', 'source', 'Markdown source', show=False),
@@ -102,8 +106,8 @@ class BoardView(InlineComments, App):
                 Binding('R', 'auto', 'Auto-refresh', show=False), Binding('g', 'merge_requests', 'Merge requests', show=False),
                 Binding('G', 'merge_requests(True)', 'All merge requests', show=False),
                 Binding('u', 'parent', 'Parent issue', show=False), Binding('i', 'linked', 'Linked issues', show=False),
-                Binding('P', 'places', 'Switch place', show=False), Binding('f12', 'logs', 'Logs', priority=True),
-                ('question_mark', 'keys', 'Keys'), ('q', 'quit', 'Quit'),
+                Binding('P', 'places', 'Switch folder', show=False), Binding('f12', 'logs', 'Logs', priority=True),
+                ('question_mark', 'keys', 'All shortcuts'), ('q', 'quit', 'Quit'),
                 Binding('escape,down', 'focus_board', 'Back to board', show=False)]
 
     def __init__(self, client, prefs, connection=None, verbose=False):
@@ -132,8 +136,8 @@ class BoardView(InlineComments, App):
         tracker, account and server this board talks to."""
         with Horizontal(id='identity'):
             if self.places is not None:
-                yield Button(f'⌂ {os.path.basename(self.folder)} ▾', id='places', compact=True, action='app.places',
-                             tooltip=f'{self.folder} · switch place (P)')
+                yield Button(Text(f'⌂ Folder (Shift+P): {plain(os.path.basename(self.folder))} ▾'), id='places', compact=True, action='app.places',
+                             tooltip=f'{self.folder} · switch saved folder (Shift+P)')
             yield Static('', id='who')
 
     def board_kind(self):
@@ -170,7 +174,7 @@ class BoardView(InlineComments, App):
         except SystemExit as exc:  # the folder list is unreadable: say why, keep this board
             self.notify(str(exc), severity='error', timeout=10)
             return
-        self.push_screen(Picker('Places · saved issueboard folders', choices, self.folder),
+        self.push_screen(Picker('Folders · saved issueboard connections', choices, self.folder),
                          lambda folder: folder and folder != self.folder and self.exit(folder))
     def refresh_context(self):
         """Identify the board whose read result is still safe to display."""
@@ -432,7 +436,7 @@ class BoardView(InlineComments, App):
         card, board = column.highlighted_child, self.query_one('#board')
 
         def scroll():
-            if not column.is_attached:
+            if not column.is_attached or (card and board.region.contains_region(card.region)):
                 return
             board.scroll_to_widget(card if card and card.is_attached else column, animate=False, immediate=True)
             label = board.children[board.children.index(column.parent) - 1]
@@ -475,6 +479,7 @@ class BoardView(InlineComments, App):
         self.show_details()
 
     def show_details(self):
+        self.query_one(IssueActions).sync(self.selected, self.thread)
         details = self.query_one('#details', Static)
         if self.selected:
             details.update(self.with_comments(self.selected, self.details(self.selected)))

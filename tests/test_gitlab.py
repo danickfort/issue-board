@@ -603,7 +603,7 @@ async def test_small_terminals_keep_the_board_usable():
         async with app.run_test(size=size) as pilot:
             await settle(app, pilot)
             board = app.query_one('#board')
-            assert board.size.height >= size[1] - 10 and app.query_one('#toolbar').size.height == 1
+            assert board.size.height >= size[1] - 13 and app.query_one('#toolbar').size.height == 3
             assert app.query_one('#auto').size.width >= 6 and app.selected
             await pilot.press('m')
             assert app.screen.query_one(OptionList).size.height > 2

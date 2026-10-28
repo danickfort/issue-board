@@ -18,7 +18,7 @@ from issueboard.diagnostics import LogPanel
 from issueboard.markup import markdown
 from issueboard.prefs import Prefs, default_path
 from issueboard.story_merge_requests import StoryMergeRequests, demo_gitlab
-from issueboard.widgets import (ALL, HINT, BacklogScreen as BaseBacklogScreen, Card as BaseCard, CommentDialog,
+from issueboard.widgets import (ALL, HINT, IssueActions, BacklogScreen as BaseBacklogScreen, Card as BaseCard, CommentDialog,
                                 CommentsScreen as BaseCommentsScreen, Picker, Row as BaseRow, ViewDialog, ago, plain)
 from . import credentials
 from .client import (Client, YouTrackError, assignable_field, custom_field, field_values, group_issues, movable_field,
@@ -211,15 +211,16 @@ class BoardApp(StoryMergeRequests, BoardView):
     def compose(self):
         yield from self.identity()
         with Horizontal(id='toolbar'):
-            yield Button('All projects ▾', id='project', compact=True, action='app.pick_project', tooltip='Project (p)')
-            yield Button('Board ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
+            yield Button('◇ Project scope (p)\nAll projects ▾', id='project', compact=True, action='app.pick_project', tooltip='Filter issues by project (p)')
+            yield Button('▦ Board (b)\nChoose… ▾', id='boards', compact=True, action='app.pick_board', tooltip='Board (b)')
             yield Select([], prompt='Sprint', id='sprints', compact=True)
-            yield Input(placeholder='Filter by ID, summary or assignee  (/)', id='filter', compact=True)
             yield Button('', id='auto', compact=True, action='app.auto', tooltip='Auto-refresh this board (R)')
+            yield Input(placeholder='Filter by ID, summary or assignee  (/)', id='filter', compact=True)
         yield Static('Loading boards…', id='status', markup=False)
         yield Horizontal(id='heads')  # the status columns, shared by every swimlane
         yield ScrollableContainer(id='board', can_focus=False)
         with VerticalScroll(id='details-pane', can_maximize=True):
+            yield IssueActions(editable=True)
             yield Static('', id='details', markup=False)
         if self.log_buffer is not None:
             yield LogPanel()
@@ -242,7 +243,9 @@ class BoardApp(StoryMergeRequests, BoardView):
         board = next((b for b in self.boards if b['id'] == self.board_id), None)
         labels = (('#project', scope['shortName'] if scope else 'All projects'), ('#boards', board['name'] if board else 'Board'))
         for button, label in labels:
-            self.query_one(button, Button).label = Content(label + ' ▾')
+            heading = '◇ Project scope (p)' if button == '#project' else '▦ Board (b)'
+            self.query_one(button, Button).label = Content(heading + '\n' + label + ' ▾')
+            self.query_one(button, Button).tooltip = Text(heading + ': ' + plain(label))
             # A new label doesn't resize an auto-width Button, and a refresh during a modal callback is dropped.
             self.call_after_refresh(self.query_one(button).refresh, layout=True)
 
