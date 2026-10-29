@@ -24,7 +24,7 @@ For an archive, extract the entire folder and run `./issueboard-<version>-<platf
    git push origin v0.3.3
    ```
 
-Use the actual new version. The workflow rejects a tag that differs from `pyproject.toml`. GitHub Actions must be enabled and repository policy must permit the publishing job's `contents: write` permission. Only the built-in `GITHUB_TOKEN` is needed; no personal token or extra release secrets are required. Existing releases are never overwritten. If an upload fails after creating a draft, inspect and delete the incomplete draft before rerunning the workflow.
+Use the actual new version. The workflow rejects a tag that differs from `pyproject.toml`. GitHub Actions must be enabled and repository policy must permit the publishing job's `contents: write` permission. Only the built-in `GITHUB_TOKEN` is needed; no personal token or extra release secrets are required. Existing releases are never overwritten. Never move a published tag to newer code: bump the version and publish a new tag instead. If an upload fails after creating a draft, inspect and delete the incomplete draft before rerunning the workflow.
 
 To test the pipeline before a release, run it manually from the Actions tab: it tests and uploads build artifacts without publishing a release when run on a branch. Download artifacts within seven days.
 

@@ -92,6 +92,15 @@ async def test_normal_mode_does_not_collect_logs():
         assert not app.query(LogPanel)
 
 
+async def test_log_timer_can_tick_after_panel_is_removed_during_shutdown():
+    app = BoardApp(DemoClient(), verbose=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await settle(app, pilot)
+        await app.query_one(LogPanel).remove()
+        LOGGER.info('shutdown in progress')
+        app.drain_logs()
+
+
 async def test_youtrack_requests_show_endpoint_status_and_timing_without_payloads(logs):
     statuses = iter([200, 403, 200])
     def respond(request):

@@ -186,7 +186,9 @@ class BoardView(InlineComments, App):
         panel.display = not panel.display
 
     def drain_logs(self):
-        self.screen_stack[0].query_one(LogPanel).drain(self.log_buffer)
+        # The app's timer can still tick while shutdown removes the panel.
+        for panel in self.screen_stack[0].query(LogPanel):
+            panel.drain(self.log_buffer)
 
     def notify(self, message, *, severity='information', **options):
         LOGGER.log({'warning': logging.WARNING, 'error': logging.ERROR}.get(severity, logging.INFO), '%s', message)
