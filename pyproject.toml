@@ -1,6 +1,6 @@
 [project]
 name = "issueboard"
-version = "0.3.5"
+version = "0.3.6"
 description = "A keyboard-driven terminal issue board for YouTrack, GitLab and Jira Cloud"
 readme = "README.md"
 license = "MIT"
