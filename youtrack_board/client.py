@@ -16,6 +16,10 @@ BOARD_FIELDS = ("id,name,currentSprint(id),columnSettings(field(name),columns(pr
 # Each link as YouTrack lists it on the issue: its direction from this issue, its type, and the issues it links.
 LINK_FIELDS = ('links(direction,linkType(name,aggregation,sourceToTarget,targetToSource),'
                'issues(id,idReadable,summary,resolved))')
+# A card's parent and grandparent, for boards whose swimlanes are issues (epics): each card sits in the lane of its
+# nearest epic, also when that is not on the board (epic > story > task).
+PARENT = "id,idReadable,summary,customFields(name,value(name))"
+PARENT_FIELDS = f"parent(issues({PARENT},parent(issues({PARENT}))))"
 COMMENT_FIELDS = ("id,text,created,updated,deleted,author(login,fullName),"
                   "visibility($type,permittedGroups(name),permittedUsers(login,fullName))")
 
@@ -109,6 +113,72 @@ def project_lanes(board, issues):
     return rows
 
 
+def swimlane_field(board):
+    """(field name, values) that make an issue a swimlane on a board with issue-based (e.g. epic) swimlanes, else None."""
+    settings = board.get('swimlaneSettings') or {}
+    field = (settings.get('field') or {}).get('name')
+    values = {v.get('name') for v in settings.get('values') or []} - {None}
+    if settings.get('enabled') and settings.get('$type') == 'IssueBasedSwimlaneSettings' and field and values:
+        return field, values
+    return None
+
+
+def parents(issue):
+    return [p for p in ((issue.get('parent') or {}).get('issues') or []) if isinstance(p, dict) and p.get('id')]
+
+
+def swimlane_issues(board, issues):
+    """{id: issue} of the swimlane issues (e.g. epics) of a board with issue-based swimlanes: those on the board first,
+    in the order loaded, then parents of its cards that are not on it. None when the board has no such swimlanes."""
+    settings = swimlane_field(board)
+    if not settings:
+        return None
+    field, values = settings
+    found, ancestors, todo, seen = {}, [], [p for i in issues for p in parents(i)], set()
+    while todo:  # every ancestor YouTrack returned, nearest first
+        parent = todo.pop(0)
+        if parent['id'] not in seen:
+            seen.add(parent['id'])
+            ancestors.append(parent)
+            todo += parents(parent)
+    for issue in [*issues, *ancestors]:
+        if {v.get('name') for v in field_values(issue, field)} & values:
+            found.setdefault(issue['id'], issue)
+    return found
+
+
+def issue_lanes(board, issues, everything):
+    """(swimlane value, issues) per swimlane issue with cards among `issues`, plus (None, issues) for cards under no
+    swimlane, placed as the board places them. A card sits in the lane of its nearest swimlane ancestor; a swimlane issue
+    heads its lane instead of being a card. `everything` is the whole board, so filters never move a card to another lane.
+    None when the board has no issue-based swimlanes."""
+    heads = swimlane_issues(board, everything)
+    if heads is None:
+        return None
+    known = {i['id']: i for i in everything}
+    lanes = {key: ({'name': head.get('idReadable'), 'presentation': head.get('summary')}, []) for key, head in heads.items()}
+    orphans, used, shown = [], set(), {i['id'] for i in issues}
+    for issue in everything:
+        if issue['id'] in heads:
+            continue
+        lane, seen, todo = None, set(), parents(issue)
+        while todo and lane is None:  # up the parent chain, as far as the board knows it
+            parent = todo.pop(0)
+            if parent['id'] in heads:
+                lane = parent['id']
+            elif parent['id'] not in seen:
+                seen.add(parent['id'])
+                todo += parents(known.get(parent['id'], parent))
+        used.add(lane)
+        if issue['id'] in shown:
+            lanes.get(lane, (None, orphans))[1].append(issue)
+    # Lanes without a card on the board are left out; lanes a filter emptied are kept, so the counts can say so.
+    rows = [row for key, row in lanes.items() if key in used]
+    if None in used:
+        rows.insert(0 if board.get('orphansAtTheTop') else len(rows), (None, orphans))
+    return rows
+
+
 class Client:
     def __init__(self, base_url, token, *, transport=None):
         check_url(base_url)
@@ -178,7 +248,8 @@ class Client:
         """The sprint's issues, or with sprint None (a board with sprints disabled) every issue on the board."""
         board_term = search_literal("Board " + board["name"])
         query = f'{board_term}: {search_literal(sprint["name"])}' if sprint else f'has: {board_term}'
-        return await self.pages('issues', ISSUE_FIELDS, query=query)
+        fields = f'{ISSUE_FIELDS},{PARENT_FIELDS}' if swimlane_field(board) else ISSUE_FIELDS
+        return await self.pages('issues', fields, query=query)
 
     async def backlog(self, saved, skip, top):
         """Up to `top` issues of a board's backlog saved search from `skip`, and whether more follow. They come in the

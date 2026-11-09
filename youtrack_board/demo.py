@@ -15,8 +15,8 @@ BUNDLES = {'DEMO': ['alex', 'jordan', 'sam', 'kim'], 'WEB': ['alex', 'priya', 's
            'MOB': ['alex', 'sam']}
 # Product team spans two projects, and its In Progress column also holds WEB's Review state.
 # Support kanban and Services desk have sprints disabled. Services desk has a swimlane per project, in the board's
-# own order; WEB has none there, so its cards land in the uncategorized lane. Website launch has Epic swimlanes,
-# which this app does not draw.
+# own order; WEB has none there, so its cards land in the uncategorized lane. Website launch has Epic swimlanes: WEB-1
+# and WEB-2 are subtasks of an epic that is not on the board itself, and WEB-3 has no epic.
 BOARDS = {
     'product': ('Product team', ['DEMO', 'WEB'], [['Open'], ['In Progress', 'Review'], ['Done']]),
     'ops': ('Support kanban', ['OPS'], [['Open'], ['In Progress'], ['Done']]),
@@ -31,6 +31,7 @@ SWIMLANES = {
     'web': {'$type': 'IssueBasedSwimlaneSettings', 'enabled': True,
             'field': {'id': '111-1', 'name': 'Type', 'presentation': 'Type'}, 'values': [{'name': 'Epic'}]},
 }
+EPIC_CARDS = ['WEB-1', 'WEB-2']  # subtasks of the Website relaunch epic, which is on no board
 ISSUES = [
     ('DEMO', 'Keyboard navigation for the board', 'Open', 'alex'), ('DEMO', 'Write the onboarding guide', 'Open', 'jordan'),
     ('DEMO', 'Connect to YouTrack', 'In Progress', 'alex'), ('DEMO', 'Handle workflow errors', 'In Progress', 'sam'),
@@ -158,6 +159,16 @@ class DemoClient:
             self.backlogs[saved] = made[:3] + random.Random(4).sample(made[3:], len(made[3:]))
         self.elsewhere = [issue(next(ids), 'DEMO', 'Terminal board for YouTrack', 'In Progress', 'alex',
                                 'On no board: u on Connect to YouTrack (DEMO-3) opens it from there, and Esc goes back.')]
+        epic = issue(next(ids), 'WEB', 'Website relaunch', 'In Progress', 'priya',
+                     'An epic on no board. Its subtasks WEB-1 and WEB-2 are its swimlane on Website launch.')
+        epic['customFields'].append({'id': 'type', 'name': 'Type', '$type': 'SingleEnumIssueCustomField',
+                                     'value': {'name': 'Epic'}})
+        self.elsewhere.append(epic)
+        self.link_list = LINKS +[(epic['idReadable'], 'Subtask', key) for key in EPIC_CARDS]
+        parent = {'issues': [{k: deepcopy(epic[k]) for k in ('id', 'idReadable', 'summary', 'customFields')}]}
+        for card in self.data:
+            if card['idReadable'] in EPIC_CARDS:  # as YouTrack returns it with PARENT_FIELDS
+                card['parent'] = deepcopy(parent)
         self.threads = {issue: [demo_comment(*c) for c in thread] for issue, thread in COMMENTS.items()}
 
     async def boards(self):
@@ -237,7 +248,7 @@ class DemoClient:
     async def links(self, issue):
         """Grouped by type and direction, as YouTrack lists them."""
         known, found = {i['idReadable']: i for i in self.everything()}, {}
-        for source, kind, target in LINKS:
+        for source, kind, target in self.link_list:
             if issue['idReadable'] in (source, target):
                 outward = issue['idReadable'] == source
                 other = known[target if outward else source]

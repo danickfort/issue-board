@@ -282,16 +282,16 @@ def test_prefs_keep_other_servers_write_atomically_and_survive_bad_files(tmp_pat
     prefs.save()
     saved = json.loads(path.read_text())
     assert saved['https://other'] == {'project': 'keep'}
-    assert saved['https://a']['views']['b1'] == {'mine': False, 'compact': True, 'hidden': [], 'auto': True}
+    assert saved['https://a']['views']['b1'] == {'mine': False, 'compact': True, 'hidden': [], 'auto': True, 'lanes': True}
     assert Prefs(str(path), 'https://a').data == prefs.data
     assert [p.name for p in tmp_path.iterdir()] == ['state.json']  # no temp files left behind
 
     path.write_text(json.dumps({'https://a': {'visited': {'x': 'yesterday', 'y': 5}, 'project': 3, 'views': {
         'b': {'mine': 'yes', 'hidden': ['Done', 7], 'auto': 'no'}, 'c': [], 'd': {'auto': False}}}}))
     assert Prefs(str(path), 'https://a').data == {'visited': {'y': 5}, 'project': None, 'views': {
-        'b': {'mine': False, 'compact': False, 'hidden': ['Done'], 'auto': True},  # only an explicit false turns it off
-        'c': {'mine': False, 'compact': False, 'hidden': [], 'auto': True},
-        'd': {'mine': False, 'compact': False, 'hidden': [], 'auto': False}}, 'repos': {}}
+        'b': {'mine': False, 'compact': False, 'hidden': ['Done'], 'auto': True, 'lanes': True},  # only an explicit false turns it off
+        'c': {'mine': False, 'compact': False, 'hidden': [], 'auto': True, 'lanes': True},
+        'd': {'mine': False, 'compact': False, 'hidden': [], 'auto': False, 'lanes': True}}, 'repos': {}}
     path.write_text('{not json')
     broken = Prefs(str(path), 'https://a')
     assert broken.warning and broken.data['visited'] == {}
@@ -382,7 +382,7 @@ async def test_view_options_apply_live_per_board_and_persist(tmp_path):
         assert {names(c.issue, 'Assignee') for c in app.query(Card)} == {'Alex Morgan'}
         assert 'assigned to me' in str(app.query_one('#status', Static).content)
         saved = json.loads(open(path).read())[client.base_url]['views']
-        assert saved == {'product': {'mine': True, 'compact': True, 'hidden': ['Done'], 'auto': True}}
+        assert saved == {'product': {'mine': True, 'compact': True, 'hidden': ['Done'], 'auto': True, 'lanes': True}}
         await pilot.press('b', *'support', 'enter')  # other boards keep their own view
         await settle(app, pilot)
         assert len(app.query(Column)) == 3 and not app.query('Card.-compact')
@@ -845,8 +845,8 @@ async def test_sprint_board_loads_only_the_sprint_and_keeps_an_empty_sprint_empt
         assert [i['id'] for i in app.issues_data] == [i['id'] for i in sprint]
         selector = app.query_one('#sprints', Select)
         assert selector.display and selector.value == '146-2727'
-        assert 'Epic swimlanes not shown' in str(app.query_one('#status', Static).content)  # said, not faked
-        assert len(app.query(Column)) == 3 and not app.query('.lane')
+        assert 'not shown' not in str(app.query_one('#status', Static).content)
+        assert lanes(app) == ['Uncategorized'] and len(app.query(Card)) == 3  # none of them is a subtask of an epic
         selector.value = '146-2728'
         await settle(app, pilot)
         assert app.issues_data == [] and not app.query(Card)  # no fallback to the whole board
@@ -953,6 +953,106 @@ async def test_project_scope_on_swimlanes_says_so_and_x_shows_everything_again()
         await settle(app, pilot)
         assert lanes(app) == ['MOB', 'OPS', 'DEMO', 'Uncategorized'] and len(app.query(Card)) == 13
         assert app.prefs.data['project'] is None and not app.view()['mine'] and isinstance(app.focused, Column)
+
+
+def child_of(issue, *chain):
+    """The issue as YouTrack returns it with its parent: each of `chain` is (id, idReadable, type) up from the issue."""
+    parent = None
+    for key, readable, kind in reversed(chain):
+        node = {'id': key, 'idReadable': readable, 'summary': f'{readable} summary',
+                'customFields': [{'name': 'Type', 'value': {'name': kind}}]}
+        if parent:
+            node['parent'] = {'issues': [parent]}
+        parent = node
+    return {**issue, 'parent': {'issues': [parent]}} if parent else issue
+
+
+def epic(issue, readable):
+    return {**issue, 'idReadable': readable, 'summary': f'{readable} summary',
+            'customFields': [*issue['customFields'], {'id': 't', 'name': 'Type', '$type': 'SingleEnumIssueCustomField',
+                                                      'value': {'name': 'Epic'}}]}
+
+
+def test_epic_swimlanes_put_each_card_under_its_nearest_epic_and_epics_head_lanes():
+    from youtrack_board.client import issue_lanes
+    on_board = epic(synthetic_issue(1, 'PP', 'Ready'), 'PP-1')
+    task = child_of(synthetic_issue(2, 'PP', 'Ready'), ('2-1', 'PP-1', 'Epic'))
+    story = child_of(synthetic_issue(3, 'PP', 'Closed'), ('2-9', 'PP-9', 'Task'), ('2-8', 'PP-8', 'Epic'))  # epic off board
+    sub = child_of(synthetic_issue(4, 'PP', 'Ready'), ('2-2', 'PP-2', 'Task'))  # PP-2 is on the board, under PP-1
+    loose = synthetic_issue(5, 'PP', 'Ready')
+    everything = [on_board, task, story, sub, loose]
+    rows = issue_lanes(PP, everything, everything)
+    assert [(v and v['name'], [i['idReadable'] for i in cards]) for v, cards in rows] == [
+        ('PP-1', ['PP-2', 'PP-4']), ('PP-8', ['PP-3']), (None, ['PP-5'])]
+    assert issue_lanes({**PP, 'orphansAtTheTop': True}, everything, everything)[0][0] is None
+    # A filter empties a lane but never moves a card to another one.
+    assert [(v and v['name'], len(c)) for v, c in issue_lanes(PP, [sub], everything)] == [('PP-1', 1), ('PP-8', 0), (None, 0)]
+    assert issue_lanes(SWING, everything, everything) is None  # project swimlanes are drawn by project_lanes
+
+
+async def test_issue_swimlane_boards_ask_for_parents_and_other_boards_do_not():
+    asked = []
+
+    def respond(request):
+        asked.append(request.url.params.get('fields'))
+        return httpx.Response(200, json=[])
+
+    client = Client('https://example.test', 'secret', transport=httpx.MockTransport(respond))
+    try:
+        await client.issues(PP, {'name': 'Sprint 5'})
+        await client.issues(SWING, None)
+    finally:
+        await client.close()
+    assert 'parent(issues(' in asked[0] and 'parent' not in asked[1]
+
+
+async def test_epic_on_the_board_heads_its_lane_instead_of_being_a_card():
+    board = [epic(synthetic_issue(1, 'PP', 'Ready'), 'PP-1'), child_of(synthetic_issue(2, 'PP', 'Ready'), ('2-1', 'PP-1', 'Epic')),
+             synthetic_issue(3, 'PP', 'Closed')]
+    client, _ = fake_youtrack({**PP, 'currentSprint': {'id': '146-2727'}},
+                              {'{Board Parler Parent - Sprints}: {Sprint 5}': board},
+                              [{'id': '146-2727', 'name': 'Sprint 5', 'archived': False}])
+    app = BoardApp(client)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        assert lanes(app) == ['PP-1', 'Uncategorized'] and 'PP-1  PP-1 summary  1' in rendered(app.query('.lane').first().content)
+        assert sorted(c.issue['idReadable'] for c in app.query(Card)) == ['PP-2', 'PP-3']
+        assert str(app.query_one('#status', Static).content).startswith('2 issues')
+        await pilot.press('e')  # without lanes the epic is a card again
+        await settle(app, pilot)
+        assert not app.query('.lane') and len(app.query(Card)) == 3
+        assert 'swimlanes off, e shows them' in str(app.query_one('#status', Static).content)
+
+
+async def test_e_and_the_view_dialog_turn_swimlanes_off_and_on_per_board(tmp_path):
+    path = tmp_path / 'state.json'
+    client = DemoClient()
+    app = BoardApp(client, Prefs(str(path), client.base_url))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await settle(app, pilot)
+        await pilot.press('b', *'launch', 'enter')
+        await settle(app, pilot)
+        assert lanes(app) == ['WEB-65', 'Uncategorized'] and cell_of(app, 'WEB-2') == ('WEB-65', 2)
+        assert cell_of(app, 'WEB-3') == ('Uncategorized', 1)
+        await pilot.press('e')
+        await settle(app, pilot)
+        assert not app.query('.lane') and len(app.query(Card)) == 3 and isinstance(app.focused, Column)
+        assert json.loads(path.read_text())[client.base_url]['views']['web']['lanes'] is False
+        await pilot.press('v')
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ViewDialog)
+        assert [(str(label), on) for label, value, on in dialog.toggles if value == 'lanes'] == [('Epic swimlanes  (e)', False)]
+        await pilot.press('escape')
+        await pilot.press('b', *'services', 'enter')  # other boards keep their own setting
+        await settle(app, pilot)
+        assert lanes(app) == ['MOB', 'OPS', 'DEMO', 'Uncategorized']
+        await pilot.press('b', *'launch', 'enter', 'e')
+        await settle(app, pilot)
+        assert lanes(app) == ['WEB-65', 'Uncategorized']
+        await pilot.press('b', *'product', 'enter', 'e')  # a board without swimlanes says so
+        await settle(app, pilot)
+        assert not app.query('.lane') and app.view()['lanes']
 
 
 def test_markdown_renders_youtrack_text_readably_and_never_as_live_content():

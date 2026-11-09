@@ -9,6 +9,7 @@ from rich.console import Group
 from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical, VerticalScroll
 from textual.content import Content
 from textual.widgets import Button, Footer, Input, Label, Select, Static
@@ -21,8 +22,8 @@ from issueboard.story_merge_requests import StoryMergeRequests, demo_gitlab
 from issueboard.widgets import (ALL, HINT, BacklogScreen as BaseBacklogScreen, Card as BaseCard, CommentDialog,
                                 CommentsScreen as BaseCommentsScreen, Picker, Row as BaseRow, ViewDialog, ago, plain)
 from . import credentials
-from .client import (Client, YouTrackError, assignable_field, custom_field, field_values, group_issues, movable_field,
-                     project_lanes, uses_sprints)
+from .client import (Client, YouTrackError, assignable_field, custom_field, field_values, group_issues, issue_lanes,
+                     movable_field, project_lanes, swimlane_field, swimlane_issues, uses_sprints)
 from .demo import DemoClient, demo_state
 
 
@@ -61,10 +62,15 @@ def issue_details(issue, field, source):
                  body(issue.get('description'), 'No description.', source))
 
 
+def has_lanes(board):
+    """The board has swimlanes in YouTrack that this app draws: one per project, or one per issue such as an epic."""
+    return project_lanes(board, []) is not None or swimlane_field(board) is not None
+
+
 def swimlane_note(board):
     """Swimlanes the board has in YouTrack that this app does not draw, so the flat columns are not mistaken for them."""
     settings = board.get('swimlaneSettings') or {}
-    if not settings.get('enabled') or project_lanes(board, []) is not None:
+    if not settings.get('enabled') or has_lanes(board):
         return None
     values = [v.get('name') for v in settings.get('values') or [] if v.get('name')]
     field = settings.get('field') or {}
@@ -197,6 +203,7 @@ class BoardApp(StoryMergeRequests, BoardView):
     SERVICE = 'YouTrack'
     ERROR = YouTrackError  # what the client raises when the service refuses or cannot be reached
     CARD = Card
+    BINDINGS = [Binding('e', 'lanes', 'Swimlanes', show=False)]
 
     def __init__(self, client, prefs=None, connection=None, gitlab=None, cwd=None, verbose=False):
         super().__init__(client, prefs or Prefs(None, client.base_url), connection, verbose)
@@ -316,16 +323,24 @@ class BoardApp(StoryMergeRequests, BoardView):
         """The issues of the board (and sprint) on screen, as the service has them now."""
         return await self.client.issues(self.board_data, self.sprint_data)
 
+    def lanes_shown(self):
+        return bool(self.board_data) and has_lanes(self.board_data) and self.view()['lanes']
+
+    def cards(self):
+        """The loaded issues that are cards: while epic swimlanes show, an epic on the board heads its lane instead."""
+        heads = swimlane_issues(self.board_data, self.issues_data) if self.lanes_shown() else None
+        return [i for i in self.issues_data if i['id'] not in heads] if heads else self.issues_data
+
     def visible_issues(self):
         query = self.query_one('#filter', Input).value.casefold()
         scope, mine, me = self.prefs.data['project'], self.view()['mine'], self.me.get('login')
-        return [i for i in self.issues_data
+        return [i for i in self.cards()
                 if query in search_text(i)
                 and (not scope or (i.get('project') or {}).get('id') == scope)
                 and (not mine or me in logins(i))]
 
     def column_titles(self):
-        return [title for title, _ in group_issues(self.board_data, self.issues_data)] if self.board_data else []
+        return [title for title, _ in group_issues(self.board_data, self.cards())] if self.board_data else []
 
     def filters(self):
         """The local filters hiding loaded issues. None of them changes the board in YouTrack."""
@@ -339,7 +354,7 @@ class BoardApp(StoryMergeRequests, BoardView):
         return reasons
 
     def show_counts(self):
-        shown, total = len(self.visible_issues()), len(self.issues_data)
+        shown, total = len(self.visible_issues()), len(self.cards())
         empty = f'No issues in {plain(self.sprint_data["name"])}' if self.sprint_data else 'No issues on this board'
         parts = [f'{shown} of {total} issues' if shown != total else f'{total} issues' if total else empty]
         parts += self.filters()
@@ -348,9 +363,11 @@ class BoardApp(StoryMergeRequests, BoardView):
         hidden = len(set(self.view()['hidden']) & set(self.column_titles()))
         if hidden:
             parts.append(f'{hidden} hidden column{"s" if hidden > 1 else ""}')
-        lanes, shown_lanes = project_lanes(self.board_data, self.visible_issues()), len(self.query('#board > .lane'))
+        lanes, shown_lanes = self.lanes(self.visible_issues()), len(self.query('#board > .lane'))
         if lanes and shown_lanes < len(lanes):
             parts.append(f'{shown_lanes} of {len(lanes)} lanes have cards')
+        if has_lanes(self.board_data) and not self.view()['lanes']:
+            parts.append('swimlanes off, e shows them')
         parts += filter(None, [swimlane_note(self.board_data)])
         self.status(' · '.join(parts) + HINT)
 
@@ -359,8 +376,11 @@ class BoardApp(StoryMergeRequests, BoardView):
         return group_issues(self.board_data, issues)
 
     def lanes(self, issues):
-        """(lane value, its issues) per swimlane, or None when the board shows no swimlanes."""
-        return project_lanes(self.board_data, issues)
+        """(lane value, its issues) per swimlane, or None when the board shows no swimlanes or they are turned off."""
+        if not self.lanes_shown():
+            return None
+        lanes = project_lanes(self.board_data, issues)
+        return lanes if lanes is not None else issue_lanes(self.board_data, issues, self.issues_data)
 
     def lane_label(self, value, count):
         if value:
@@ -454,16 +474,38 @@ class BoardApp(StoryMergeRequests, BoardView):
         view, titles = self.view(), self.column_titles()
         selections = [(Text('Only issues assigned to me  (M)'), 'mine', view['mine']),
                       (Text('Compact one-line cards'), 'compact', view['compact'])]
+        if has_lanes(self.board_data):
+            selections.append((Text(f'{self.lanes_kind()} swimlanes  (e)'), 'lanes', view['lanes']))
         selections += [(Text(f'Show column: {title}'), ('column', title), title not in view['hidden']) for title in titles]
 
         async def apply(selected):
             hidden = [t for t in view['hidden'] if t not in titles] + [t for t in titles if ('column', t) not in selected]
-            self.prefs.set_view(self.board_id, mine='mine' in selected, compact='compact' in selected, hidden=hidden)
+            lanes = 'lanes' in selected if has_lanes(self.board_data) else view['lanes']
+            self.prefs.set_view(self.board_id, mine='mine' in selected, compact='compact' in selected, hidden=hidden,
+                                lanes=lanes)
             self.save_prefs()
             await self.render_board()
 
         self.push_screen(ViewDialog(f'My view of {self.board_data["name"]}', selections, apply),
                          lambda _: self.action_focus_board())
+
+    def lanes_kind(self):
+        """What the board's swimlanes are, as YouTrack names them: Project, or the swimlane issues' types such as Epic."""
+        settings = swimlane_field(self.board_data)
+        return plain('/'.join(sorted(settings[1]))) if settings else 'Project'
+
+    async def action_lanes(self):
+        if not self.board_data:
+            return
+        if not has_lanes(self.board_data):
+            self.notify(swimlane_note(self.board_data) or 'This board has no swimlanes in YouTrack.')
+            return
+        lanes = not self.view()['lanes']
+        self.prefs.set_view(self.board_id, lanes=lanes)
+        self.save_prefs()
+        await self.render_board()
+        self.action_focus_board()
+        self.notify(f'{self.lanes_kind()} swimlanes {"on" if lanes else "off"}.')
 
     async def action_clear_filters(self):
         """Undo every local filter at once: project scope, only mine and the text filter."""
